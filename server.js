@@ -6,7 +6,7 @@ import connectDB from "./config/db.js";
 // Routes Imports
 import authRoutes from "./routes/authRoutes.js";
 import profileRoutes from "./routes/profileRoutes.js";
-
+import paymentRoutes from "./routes/paymentRoutes.js";
 dotenv.config();
 
 const app = express();
@@ -32,7 +32,7 @@ app.use(async (req, res, next) => {
 // API Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/profile", profileRoutes);
-
+app.use("/api/payment", paymentRoutes);
 // Test Route
 app.get("/", (req, res) => {
   res.send("Rishta Point API is Running...");

@@ -10,6 +10,8 @@ const userSchema = new mongoose.Schema(
     password: { type: String, required: true },
     registerType: { type: String, enum: ["myself", "someone"], default: "myself" },
     relation: { type: String, default: "" },
+    connects: { type: Number, default: 5 },
+    currentPackage: { type: String, default: "Free" },
 
     // Email Verification Status
     isVerified: { type: Boolean, default: false },

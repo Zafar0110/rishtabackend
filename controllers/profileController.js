@@ -80,11 +80,21 @@ export const getRecentProposals = async (req, res) => {
     const { userId } = req.params;
     let query = { isProfileComplete: true };
 
-    // Agar valid logged-in userId ho to us user ko list se exclude aur partner filter apply karein
-    if (userId && userId !== 'all' && mongoose.Types.ObjectId.isValid(userId)) {
-      query._id = { $ne: userId };
+    // 1. Check karein agar userId valid character string ho (undefined/null text na ho)
+    const isValidUserParam = 
+      userId && 
+      userId !== "all" && 
+      userId !== "undefined" && 
+      userId !== "null" && 
+      mongoose.Types.ObjectId.isValid(userId);
 
-      const currentUser = await User.findById(userId);
+    if (isValidUserParam) {
+      // Current user ko exclude karein
+      query._id = { $ne: new mongoose.Types.ObjectId(userId) };
+
+      // User search karein
+      const currentUser = await User.findById(userId).lean();
+      
       if (currentUser?.partnerExpectations?.currentCountry) {
         const partnerCountry = currentUser.partnerExpectations.currentCountry;
         if (partnerCountry && partnerCountry !== "No Preference") {
@@ -93,24 +103,36 @@ export const getRecentProposals = async (req, res) => {
       }
     }
 
-    // Database query execute karein
+    // 2. Database query execute karein
     let users = await User.find(query)
       .select("-password -otp -otpExpires")
       .limit(30)
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
 
-    // Fallback: Agar partner country filter lagane se zero users milen, to filter hata kar general list bhej dein
+    // 3. Fallback: Agar filter se zero results milein, to filter hata kar fetch karein
     if (users.length === 0 && query["locationInfo.residenceCountry"]) {
       delete query["locationInfo.residenceCountry"];
       users = await User.find(query)
         .select("-password -otp -otpExpires")
         .limit(30)
-        .sort({ createdAt: -1 });
+        .sort({ createdAt: -1 })
+        .lean();
     }
 
-    res.status(200).json({ success: true, count: users.length, users });
+    return res.status(200).json({ 
+      success: true, 
+      count: users.length, 
+      users 
+    });
+
   } catch (error) {
     console.error("Error in getRecentProposals:", error);
-    res.status(500).json({ success: false, message: error.message });
+    // Vercel HTML Error ki bajaye hamesha JSON Return karein
+    return res.status(500).json({ 
+      success: false, 
+      message: "Server error fetching proposals", 
+      error: error.message 
+    });
   }
 };

@@ -90,3 +90,41 @@ export const getAdminDashboardStats = async (req, res) => {
     });
   }
 };
+
+// Get All Users for the Admin "Users" Table
+export const getAllUsers = async (req, res) => {
+  try {
+    const users = await User.find({ role: { $ne: "admin" } })
+      .select(
+        "firstName lastName email phone isVerified isProfileComplete completedStep locationInfo.residenceCountry basicInfo.featuredImage basicInfo.gender createdAt"
+      )
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const formattedUsers = users.map((u) => ({
+      _id: u._id,
+      name: `${u.firstName || ""} ${u.lastName || ""}`.trim() || "User",
+      email: u.email,
+      phone: u.phone,
+      country: u.locationInfo?.residenceCountry || "",
+      image: u.basicInfo?.featuredImage || "",
+      gender: u.basicInfo?.gender || "Male",
+      isVerified: u.isVerified,
+      isProfileComplete: u.isProfileComplete,
+      createdAt: u.createdAt,
+    }));
+
+    return res.status(200).json({
+      success: true,
+      count: formattedUsers.length,
+      users: formattedUsers,
+    });
+  } catch (error) {
+    console.error("Get All Users Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error fetching users",
+      error: error.message,
+    });
+  }
+};

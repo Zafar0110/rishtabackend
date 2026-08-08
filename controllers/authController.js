@@ -275,6 +275,13 @@ export const loginUser = async (req, res) => {
       return res.status(401).json({ message: "Please verify your email before logging in!" });
     }
 
+    // Block login for deactivated accounts
+    if (user.isActive === false) {
+      return res.status(403).json({
+        message: "Your account has been deactivated. Please contact support for assistance.",
+      });
+    }
+
     // Compare Password
     const isMatch = await bcrypt.compare(password, user.password);
 

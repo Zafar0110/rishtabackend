@@ -96,7 +96,7 @@ export const getAllUsers = async (req, res) => {
   try {
     const users = await User.find({ role: { $ne: "admin" } })
       .select(
-        "firstName lastName email phone isVerified isProfileComplete completedStep locationInfo.residenceCountry basicInfo.featuredImage basicInfo.gender createdAt"
+        "firstName lastName email phone isVerified isActive isProfileComplete completedStep locationInfo.residenceCountry basicInfo.featuredImage basicInfo.gender createdAt"
       )
       .sort({ createdAt: -1 })
       .lean();
@@ -110,6 +110,7 @@ export const getAllUsers = async (req, res) => {
       image: u.basicInfo?.featuredImage || "",
       gender: u.basicInfo?.gender || "Male",
       isVerified: u.isVerified,
+      isActive: u.isActive !== false,
       isProfileComplete: u.isProfileComplete,
       createdAt: u.createdAt,
     }));
@@ -124,6 +125,43 @@ export const getAllUsers = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Server Error fetching users",
+      error: error.message,
+    });
+  }
+};
+
+// Activate / Deactivate a User Account (blocks login while inactive)
+export const toggleUserStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { isActive } = req.body;
+
+    if (typeof isActive !== "boolean") {
+      return res.status(400).json({ success: false, message: "isActive (boolean) is required" });
+    }
+
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    if (user.role === "admin") {
+      return res.status(403).json({ success: false, message: "Admin accounts cannot be deactivated" });
+    }
+
+    user.isActive = isActive;
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: isActive ? "User activated successfully" : "User deactivated successfully",
+      user: { _id: user._id, isActive: user.isActive },
+    });
+  } catch (error) {
+    console.error("Toggle User Status Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error updating user status",
       error: error.message,
     });
   }

@@ -1,6 +1,7 @@
 import express from "express";
 import dotenv from "dotenv";
 import http from "http";
+import cors from "cors";
 import { Server } from "socket.io";
 import connectDB from "./config/db.js";
 
@@ -8,44 +9,47 @@ import authRoutes from "./routes/authRoutes.js";
 import profileRoutes from "./routes/profileRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 import chatRoutes from "./routes/chatRoutes.js";
+import adminRoutes from "./routes/adminRoutes.js";
+// ðŸŸ¢ Save cPanel's assigned PORT before dotenv runs
+const PASSENGER_PORT = process.env.PORT;
 
 dotenv.config();
 
 const app = express();
-const ALLOWED_ORIGIN = "https://rishtapoin-front.vercel.app";
+const ALLOWED_ORIGIN = process.env.FRONTEND_URL || "https://rishtapoin-front.vercel.app";
 
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-// 1. Express Level CORS Setup
-app.use((req, res, next) => {
-  res.setHeader("Access-Control-Allow-Origin", ALLOWED_ORIGIN);
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
-  res.setHeader("Access-Control-Allow-Credentials", "true");
+app.use(
+  cors({
+    origin: [ALLOWED_ORIGIN, "http://localhost:5173", "http://localhost:3000"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+    credentials: true,
+  })
+);
 
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
-  next();
-});
-
-// 2. Database Middleware
 app.use(async (req, res, next) => {
   try {
     await connectDB();
     next();
   } catch (error) {
     console.error("Database connection failure:", error);
-    return res.status(500).json({ success: false, message: "DB Connection Failed", error: error.message });
+    return res.status(500).json({
+      success: false,
+      message: "DB Connection Failed",
+      error: error.message,
+    });
   }
 });
 
 const server = http.createServer(app);
 
 const io = new Server(server, {
+  maxHttpBufferSize: 1e8, // 100 MB payload limit for large messages/attachments
   cors: {
-    origin: ALLOWED_ORIGIN,
+    origin: [ALLOWED_ORIGIN, "http://localhost:5173", "http://localhost:3000"],
     methods: ["GET", "POST"],
     credentials: true,
   },
@@ -53,13 +57,6 @@ const io = new Server(server, {
 });
 
 app.set("io", io);
-
-// 🟢 FIX FOR CREDENTIALS CORS: Explicitly force origin header before engine handle
-app.use("/socket.io", (req, res) => {
-  res.setHeader("Access-Control-Allow-Origin", ALLOWED_ORIGIN);
-  res.setHeader("Access-Control-Allow-Credentials", "true");
-  io.engine.handleRequest(req, res);
-});
 
 const parseCleanId = (val) => {
   if (!val) return "";
@@ -102,9 +99,12 @@ app.get("/", (req, res) => {
   res.send("Rishta Point API Running...");
 });
 
-if (process.env.NODE_ENV !== "production") {
-  const PORT = process.env.PORT || 5000;
-  server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
-}
+
+app.use("/api/admin", adminRoutes);
+// ðŸŸ¢ Use Passenger's PORT if available, otherwise fallback to process.env.PORT or 5000
+const PORT = PASSENGER_PORT || process.env.PORT || 5000;
+server.listen(PORT, () => {
+  console.log(`ðŸš€ Server running on port ${PORT}`);
+});
 
 export default app;

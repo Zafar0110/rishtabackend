@@ -203,6 +203,59 @@ export const verifyOTP = async (req, res) => {
 
 // @desc    Login User
 // @route   POST /api/auth/login
+// export const loginUser = async (req, res) => {
+//   try {
+//     const { email, password } = req.body;
+
+//     if (!email || !password) {
+//       return res.status(400).json({ message: "Please provide both email and password" });
+//     }
+
+//     const normalizedEmail = email.trim().toLowerCase();
+//     const user = await User.findOne({ email: normalizedEmail });
+
+//     if (!user) {
+//       return res.status(401).json({ message: "Invalid email or password" });
+//     }
+
+//     if (!user.isVerified) {
+//       return res.status(401).json({ message: "Please verify your email before logging in!" });
+//     }
+
+//     // Compare Password
+//     const isMatch = await bcrypt.compare(password, user.password);
+
+//     if (!isMatch) {
+//       return res.status(401).json({ message: "Invalid email or password" });
+//     }
+
+//     // Generate Token
+//     const token = generateToken(user._id);
+
+//     // ✅ Clean Response for Frontend LoginHero Component
+//     res.status(200).json({
+//       success: true,
+//       token,
+//       user: {
+//         _id: user._id,
+//         firstName: user.firstName,
+//         lastName: user.lastName,
+//         fullName: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+//         email: user.email,
+//         isProfileComplete: user.isProfileComplete || false,
+//         completedStep: user.completedStep || 0,
+//       },
+//       message: "Login successful!",
+//     });
+
+//   } catch (error) {
+//     console.error("Login Controller Error:", error);
+//     res.status(500).json({ message: error.message });
+//   }
+// };
+
+
+
 export const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -232,7 +285,7 @@ export const loginUser = async (req, res) => {
     // Generate Token
     const token = generateToken(user._id);
 
-    // ✅ Clean Response for Frontend LoginHero Component
+    // ✅ Clean Response with Role included
     res.status(200).json({
       success: true,
       token,
@@ -242,6 +295,7 @@ export const loginUser = async (req, res) => {
         lastName: user.lastName,
         fullName: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
         email: user.email,
+        role: user.role || "user", // 👈 YEH FIELD ADD KIYA HAI
         isProfileComplete: user.isProfileComplete || false,
         completedStep: user.completedStep || 0,
       },
@@ -251,5 +305,74 @@ export const loginUser = async (req, res) => {
   } catch (error) {
     console.error("Login Controller Error:", error);
     res.status(500).json({ message: error.message });
+  }
+};
+
+
+export const updateUserSettings = async (req, res) => {
+  try {
+    const { userId, firstName, lastName, phone, currentPassword, newPassword } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ success: false, message: "User ID is required" });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    // 1. Basic Info Update
+    if (firstName) user.firstName = firstName.trim();
+    if (lastName !== undefined) user.lastName = lastName.trim();
+    if (phone) user.phone = phone.trim();
+
+    // 2. Password Change Logic (if newPassword is provided)
+    if (newPassword && newPassword.trim() !== "") {
+      if (!currentPassword) {
+        return res.status(400).json({
+          success: false,
+          message: "Please enter your current password to set a new password",
+        });
+      }
+
+      // Check current password match
+      const isMatch = await bcrypt.compare(currentPassword, user.password);
+      if (!isMatch) {
+        return res.status(400).json({
+          success: false,
+          message: "Current password is incorrect!",
+        });
+      }
+
+      // Hash new password
+      const salt = await bcrypt.genSalt(10);
+      user.password = await bcrypt.hash(newPassword, salt);
+    }
+
+    await user.save();
+
+    // Sensitive data exclude karke return karein
+    const updatedUserData = {
+      _id: user._id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      phone: user.phone,
+      role: user.role || "user",
+    };
+
+    return res.status(200).json({
+      success: true,
+      message: "Settings updated successfully!",
+      user: updatedUserData,
+    });
+  } catch (error) {
+    console.error("Error updating settings:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while updating settings",
+      error: error.message,
+    });
   }
 };

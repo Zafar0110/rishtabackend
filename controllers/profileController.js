@@ -136,3 +136,77 @@ export const getRecentProposals = async (req, res) => {
     });
   }
 };
+
+
+export const getAllProfiles = async (req, res) => {
+  try {
+    // 1. Database level query: Admins filter out honge aur Passwords/OTPs hide honge
+    const users = await User.find(
+      { role: { $ne: "admin" } }, 
+      "-password -otp -otpExpires"
+    ).lean();
+
+    // 2. Clean Frontend Data Mapping
+    const profiles = users.map((u) => {
+      const basic = u.basicInfo || {};
+      const religious = u.religiousInfo || {};
+      const location = u.locationInfo || {};
+      const education = u.educationInfo || {};
+
+      return {
+        _id: u._id,
+        user: u._id,
+        name: `${u.firstName || ""} ${u.lastName || ""}`.trim() || "User",
+        email: u.email,
+        phone: u.phone,
+        role: u.role || "user",
+        
+        // Basic Info
+        image: basic.featuredImage || "/assets/homepage/proposal/first.webp",
+        gallery: basic.gallery || [],
+        gender: basic.gender || "Male",
+        maritalStatus: basic.maritalStatus || "Single",
+        age: basic.age || 0,
+        height: basic.height || 0,
+        weight: basic.weight || 0,
+        bodyType: basic.bodyType || "Slim & Smart",
+        complexion: basic.complexion || "Fair",
+
+        // Religious Info
+        religious: religious.religion || "Islam",
+        sect: religious.sect || "",
+        caste: religious.caste || "",
+
+        // Location Info
+        location: location.residenceCity || location.residenceCountry || "",
+        origin: location.originCountry || "",
+        residenceCountry: location.residenceCountry || "",
+        residenceState: location.residenceState || "",
+        residenceCity: location.residenceCity || "",
+
+        // Education & Profession Info
+        education: education.education || "None",
+        profession: education.profession || "",
+        motherTongue: education.motherTongue || "Urdu",
+        income: education.income || "",
+
+        // Flags
+        isProfileComplete: u.isProfileComplete || false,
+        completedStep: u.completedStep || 1,
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      count: profiles.length,
+      profiles,
+    });
+  } catch (error) {
+    console.error("Error in getAllProfiles:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error: Unable to fetch profiles",
+      error: error.message,
+    });
+  }
+};

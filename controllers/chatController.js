@@ -108,6 +108,8 @@ export const startOrGetConversation = async (req, res) => {
 
 // @desc    Send Message & Real-time Socket Broadcast from Backend
 // @route   POST /api/chat/send-message
+// controllers/chatController.js ko replace karein sendMessage function ko
+
 export const sendMessage = async (req, res) => {
   try {
     const { conversationId, senderId, receiverId, text } = req.body;
@@ -120,7 +122,7 @@ export const sendMessage = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid Conversation ID" });
     }
 
-    // 1. Create Message in Database
+    // 1. Create Message in Database (This is already VERY FAST)
     let newMessage = await Message.create({
       conversationId,
       sender: senderId,
@@ -128,42 +130,50 @@ export const sendMessage = async (req, res) => {
       text: text.trim(),
     });
 
-    // 2. Populate sender & receiver details
+    // 2. Populate details
     newMessage = await Message.findById(newMessage._id)
       .populate("sender", "firstName lastName profileImage basicInfo")
       .populate("receiver", "firstName lastName profileImage basicInfo")
       .populate("conversationId");
 
-    // 3. Update Last Message in Conversation
+    // 3. Update Last Message (Fast)
     await Conversation.findByIdAndUpdate(conversationId, {
       lastMessage: newMessage._id,
       updatedAt: new Date(),
     });
 
-    // 🟢 4. BACKEND SOCKET BROADCAST (Ensures 100% Real-Time Delivery)
-    const io = req.app.get("io");
-    if (io) {
-      const targetReceiverId = cleanId(receiverId);
-      const targetConvId = cleanId(conversationId);
+    // 🟢 4. BACKEND SOCKET BROADCAST (WRAP WITH OPTIONALITY FOR VERCEL)
+    // Hum try-catch block handle kar rahy hain agar socket connection crash ho bhi jaye backend request fail na ho.
+    try {
+      const io = req.app.get("io");
+      if (io) {
+        const targetReceiverId = cleanId(receiverId);
+        const targetConvId = cleanId(conversationId);
 
-      console.log(`🚀 DIRECT BACKEND EMIT -> Receiver: [${targetReceiverId}] | Conv: [${targetConvId}]`);
+        console.log(`🚀 BACKEND EMIT (Optional) -> Receiver: [${targetReceiverId}] | Conv: [${targetConvId}]`);
 
-      // Broadcast to Receiver's Personal Room (For instant delivery on Dashboard / Inbox)
-      if (targetReceiverId) {
-        io.to(targetReceiverId).emit("receive_message", newMessage);
-        io.to(targetReceiverId).emit("new_unread_message", newMessage);
+        // Emit only if connection seems active
+        if (targetReceiverId) {
+          io.to(targetReceiverId).emit("receive_message", newMessage);
+          io.to(targetReceiverId).emit("new_unread_message", newMessage);
+        }
+
+        if (targetConvId) {
+          io.to(targetConvId).emit("receive_message", newMessage);
+        }
       }
-
-      // Broadcast to Active Conversation Room
-      if (targetConvId) {
-        io.to(targetConvId).emit("receive_message", newMessage);
-      }
+    } catch (socketError) {
+      console.error("Non-critical Socket Broadcast Error:", socketError);
+      // Backend api success response block nahi hona chahye.
     }
 
-    res.status(200).json({ success: true, message: newMessage });
+    // 🟢 5. RETURN SUCCESS FORAN (BINA DELAY)
+    // Frontend isse optimistic logic handle karega.
+    return res.status(200).json({ success: true, message: newMessage });
+
   } catch (error) {
     console.error("Send Message Error:", error);
-    res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 

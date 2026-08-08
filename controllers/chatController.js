@@ -110,12 +110,22 @@ export const startOrGetConversation = async (req, res) => {
 // @route   POST /api/chat/send-message
 // controllers/chatController.js ko replace karein sendMessage function ko
 
+// Base64 data URL length cap (~8MB raw file, keeps the document safely under MongoDB's 16MB limit)
+const MAX_FILE_DATA_URL_LENGTH = 12 * 1024 * 1024;
+
 export const sendMessage = async (req, res) => {
   try {
-    const { conversationId, senderId, receiverId, text } = req.body;
+    const { conversationId, senderId, receiverId, text, fileUrl, fileName, fileType, fileSize } = req.body;
 
-    if (!text || text.trim() === "") {
-      return res.status(400).json({ success: false, message: "Message text cannot be empty" });
+    const trimmedText = (text || "").trim();
+    const hasFile = !!fileUrl;
+
+    if (!trimmedText && !hasFile) {
+      return res.status(400).json({ success: false, message: "Message text or a file is required" });
+    }
+
+    if (hasFile && fileUrl.length > MAX_FILE_DATA_URL_LENGTH) {
+      return res.status(400).json({ success: false, message: "File is too large. Please share a file under 8MB." });
     }
 
     if (!mongoose.Types.ObjectId.isValid(conversationId)) {
@@ -127,7 +137,11 @@ export const sendMessage = async (req, res) => {
       conversationId,
       sender: senderId,
       receiver: receiverId,
-      text: text.trim(),
+      text: trimmedText,
+      fileUrl: fileUrl || "",
+      fileName: fileName || "",
+      fileType: fileType || "",
+      fileSize: fileSize || 0,
     });
 
     // 2. Populate details

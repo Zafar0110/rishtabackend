@@ -176,34 +176,20 @@ export const getRecentProposals = async (req, res) => {
     if (isValidUserParam) {
       // Logged-in user ka apna profile exclude karein
       query._id = { $ne: new mongoose.Types.ObjectId(userId) };
-
-      // Fetch only the one field needed for the preference filter, instead of
-      // pulling the entire user document (photos included) just to read it.
-      const currentUser = await User.findById(userId)
-        .select("partnerExpectations.currentCountry")
-        .lean();
-
-      const partnerCountry = currentUser?.partnerExpectations?.currentCountry;
-      if (partnerCountry && partnerCountry !== "No Preference") {
-        query["locationInfo.residenceCountry"] = partnerCountry;
-      }
     }
 
-    // 2. Database query execute karein — no limit, the frontend's "Show More"
-    // button pages through the full list client-side.
-    let users = await User.find(query)
+    // 2. Database query execute karein — every matching profile is returned
+    // (no limit) so the homepage's "Show More" button can page through them
+    // client-side.
+    //
+    // NOTE: this deliberately no longer narrows results to the viewer's
+    // preferred partner country. That filter cut a logged-in user's homepage
+    // from 22 profiles down to 3, which read as an empty/broken section.
+    // Preference-based filtering still lives on the dedicated search page.
+    const users = await User.find(query)
       .select(PROPOSAL_CARD_FIELDS)
       .sort({ createdAt: -1 })
       .lean();
-
-    // 3. Fallback: Agar filter se zero results milein, to filter hata kar fetch karein
-    if (users.length === 0 && query["locationInfo.residenceCountry"]) {
-      delete query["locationInfo.residenceCountry"];
-      users = await User.find(query)
-        .select(PROPOSAL_CARD_FIELDS)
-        .sort({ createdAt: -1 })
-        .lean();
-    }
 
     const payload = users.map(stripAvatar);
     const sizeKB = (JSON.stringify(payload).length / 1024).toFixed(1);

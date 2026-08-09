@@ -93,38 +93,60 @@ export const saveProfileStep = async (req, res) => {
 };
 
 
+// Only the fields the homepage proposal card actually renders. Critically this
+// EXCLUDES basicInfo.gallery — gallery photos are stored as base64 blobs, and
+// returning them for every profile made this endpoint 2.8MB / 99 seconds.
+const PROPOSAL_CARD_FIELDS = [
+  "firstName",
+  "lastName",
+  "profileImage",
+  "basicInfo.featuredImage",
+  "basicInfo.gender",
+  "basicInfo.age",
+  "religiousInfo.sect",
+  "religiousInfo.caste",
+  "locationInfo.residenceCity",
+  "locationInfo.originCountry",
+  "educationInfo.profession",
+  "createdAt",
+].join(" ");
+
 export const getRecentProposals = async (req, res) => {
+  // TEMPORARY performance diagnostics — remove once the slow-API cause is confirmed
+  const requestStart = Date.now();
   try {
     const { userId } = req.params;
-    let query = { isProfileComplete: true };
+    // Admins are excluded so staff accounts never appear as proposals
+    let query = { isProfileComplete: true, role: { $ne: "admin" } };
 
     // 1. Check karein agar userId valid character string ho (undefined/null text na ho)
-    const isValidUserParam = 
-      userId && 
-      userId !== "all" && 
-      userId !== "undefined" && 
-      userId !== "null" && 
+    const isValidUserParam =
+      userId &&
+      userId !== "all" &&
+      userId !== "undefined" &&
+      userId !== "null" &&
       mongoose.Types.ObjectId.isValid(userId);
 
     if (isValidUserParam) {
-      // Current user ko exclude karein
+      // Logged-in user ka apna profile exclude karein
       query._id = { $ne: new mongoose.Types.ObjectId(userId) };
 
-      // User search karein
-      const currentUser = await User.findById(userId).lean();
-      
-      if (currentUser?.partnerExpectations?.currentCountry) {
-        const partnerCountry = currentUser.partnerExpectations.currentCountry;
-        if (partnerCountry && partnerCountry !== "No Preference") {
-          query["locationInfo.residenceCountry"] = partnerCountry;
-        }
+      // Fetch only the one field needed for the preference filter, instead of
+      // pulling the entire user document (photos included) just to read it.
+      const currentUser = await User.findById(userId)
+        .select("partnerExpectations.currentCountry")
+        .lean();
+
+      const partnerCountry = currentUser?.partnerExpectations?.currentCountry;
+      if (partnerCountry && partnerCountry !== "No Preference") {
+        query["locationInfo.residenceCountry"] = partnerCountry;
       }
     }
 
-    // 2. Database query execute karein
+    // 2. Database query execute karein — no limit, the frontend's "Show More"
+    // button pages through the full list client-side.
     let users = await User.find(query)
-      .select("-password -otp -otpExpires")
-      .limit(30)
+      .select(PROPOSAL_CARD_FIELDS)
       .sort({ createdAt: -1 })
       .lean();
 
@@ -132,25 +154,27 @@ export const getRecentProposals = async (req, res) => {
     if (users.length === 0 && query["locationInfo.residenceCountry"]) {
       delete query["locationInfo.residenceCountry"];
       users = await User.find(query)
-        .select("-password -otp -otpExpires")
-        .limit(30)
+        .select(PROPOSAL_CARD_FIELDS)
         .sort({ createdAt: -1 })
         .lean();
     }
 
-    return res.status(200).json({ 
-      success: true, 
-      count: users.length, 
-      users 
+    const sizeKB = (JSON.stringify(users).length / 1024).toFixed(1);
+    console.error(`[TIMING] getRecentProposals - ${users.length} users, ${sizeKB}KB, ${Date.now() - requestStart}ms`);
+
+    return res.status(200).json({
+      success: true,
+      count: users.length,
+      users
     });
 
   } catch (error) {
     console.error("Error in getRecentProposals:", error);
     // Vercel HTML Error ki bajaye hamesha JSON Return karein
-    return res.status(500).json({ 
-      success: false, 
-      message: "Server error fetching proposals", 
-      error: error.message 
+    return res.status(500).json({
+      success: false,
+      message: "Server error fetching proposals",
+      error: error.message
     });
   }
 };

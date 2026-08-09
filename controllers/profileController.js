@@ -99,7 +99,6 @@ export const saveProfileStep = async (req, res) => {
 const PROPOSAL_CARD_FIELDS = [
   "firstName",
   "lastName",
-  "profileImage",
   "basicInfo.featuredImage",
   "basicInfo.gender",
   "basicInfo.age",
@@ -110,6 +109,53 @@ const PROPOSAL_CARD_FIELDS = [
   "educationInfo.profession",
   "createdAt",
 ].join(" ");
+
+// Strips the heavy base64 avatar out of a proposal document, replacing it with
+// a boolean. Clients load the actual image from GET /api/profile/avatar/:id,
+// which lets the browser fetch avatars in parallel and cache them — instead of
+// inlining ~45KB of base64 per profile into the JSON payload.
+const stripAvatar = (u) => {
+  const { basicInfo = {}, ...rest } = u;
+  const { featuredImage, ...basicRest } = basicInfo;
+  return {
+    ...rest,
+    basicInfo: basicRest,
+    hasAvatar: !!(featuredImage && featuredImage.trim() !== ""),
+  };
+};
+
+// @desc    Serve a user's profile photo as a real, cacheable image response
+// @route   GET /api/profile/avatar/:userId
+export const getUserAvatar = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ success: false, message: "Invalid User ID" });
+    }
+
+    const user = await User.findById(userId).select("basicInfo.featuredImage").lean();
+    const dataUrl = user?.basicInfo?.featuredImage;
+
+    if (!dataUrl || !dataUrl.startsWith("data:")) {
+      return res.status(404).json({ success: false, message: "No avatar set" });
+    }
+
+    const match = dataUrl.match(/^data:(.+?);base64,(.*)$/s);
+    if (!match) {
+      return res.status(404).json({ success: false, message: "Avatar is not a valid data URL" });
+    }
+
+    const buffer = Buffer.from(match[2], "base64");
+
+    res.set("Content-Type", match[1]);
+    res.set("Cache-Control", "public, max-age=86400"); // cache for a day
+    return res.send(buffer);
+  } catch (error) {
+    console.error("getUserAvatar Error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
 
 export const getRecentProposals = async (req, res) => {
   // TEMPORARY performance diagnostics — remove once the slow-API cause is confirmed
@@ -159,13 +205,14 @@ export const getRecentProposals = async (req, res) => {
         .lean();
     }
 
-    const sizeKB = (JSON.stringify(users).length / 1024).toFixed(1);
-    console.error(`[TIMING] getRecentProposals - ${users.length} users, ${sizeKB}KB, ${Date.now() - requestStart}ms`);
+    const payload = users.map(stripAvatar);
+    const sizeKB = (JSON.stringify(payload).length / 1024).toFixed(1);
+    console.error(`[TIMING] getRecentProposals - ${payload.length} users, ${sizeKB}KB, ${Date.now() - requestStart}ms`);
 
     return res.status(200).json({
       success: true,
-      count: users.length,
-      users
+      count: payload.length,
+      users: payload
     });
 
   } catch (error) {

@@ -3,11 +3,17 @@ import mongoose from "mongoose";
 // @desc    Get complete profile data for pre-filling inputs
 // @route   GET /api/profile/:userId
 export const getUserProfile = async (req, res) => {
+  // TEMPORARY performance diagnostics — remove once the slow-API cause is confirmed
+  const requestStart = Date.now();
   try {
-    const user = await User.findById(req.params.userId).select("-password -otp -otpExpires");
+    const user = await User.findById(req.params.userId)
+      .select("-password -otp -otpExpires")
+      .lean();
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
+    const sizeKB = (JSON.stringify(user).length / 1024).toFixed(1);
+    console.error(`[TIMING] getUserProfile - ${Date.now() - requestStart}ms, size: ${sizeKB}KB`);
     res.status(200).json({ success: true, user });
   } catch (error) {
     res.status(500).json({ message: error.message });

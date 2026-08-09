@@ -68,6 +68,8 @@ export const createCheckoutSession = async (req, res) => {
 // @desc    Verify Payment Session and Add Connects to Database
 // @route   POST /api/payment/verify-payment
 export const verifyPayment = async (req, res) => {
+  // TEMPORARY performance diagnostics — remove once the slow-API cause is confirmed
+  const requestStart = Date.now();
   try {
     const { sessionId } = req.body;
 
@@ -75,49 +77,65 @@ export const verifyPayment = async (req, res) => {
       return res.status(400).json({ success: false, message: "Session ID required" });
     }
 
-    // Check if session already processed
-    const existingTransaction = await PlanBuy.findOne({ stripeSessionId: sessionId });
+    // The duplicate check and the Stripe lookup don't depend on each other, so
+    // run them concurrently instead of back-to-back. (Stripe's API call is the
+    // slowest single step here, so overlapping it with the DB read matters.)
+    const [existingTransaction, session] = await Promise.all([
+      PlanBuy.findOne({ stripeSessionId: sessionId }).lean(),
+      stripe.checkout.sessions.retrieve(sessionId),
+    ]);
+
+    // Already processed — idempotent, safe to call multiple times
     if (existingTransaction) {
-      return res.status(200).json({ success: true, message: "Payment already processed", plan: existingTransaction });
+      console.error(`[TIMING] verifyPayment (already processed) - ${Date.now() - requestStart}ms`);
+      return res.status(200).json({
+        success: true,
+        alreadyProcessed: true,
+        message: "Payment already processed",
+        plan: existingTransaction,
+      });
     }
 
-    // Fetch session details from Stripe
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    if (session.payment_status !== "paid") {
+      return res.status(400).json({ success: false, message: "Payment not completed" });
+    }
 
-    if (session.payment_status === "paid") {
-      const { userId, packageTitle, connects, price } = session.metadata;
+    const { userId, packageTitle, connects, price } = session.metadata;
+    const addedConnects = parseInt(connects, 10);
 
-      const addedConnects = parseInt(connects, 10);
-
-      // 1. Create PlanBuy Record
-      const newPlan = await PlanBuy.create({
+    // Create the purchase record and credit the user concurrently — two
+    // independent writes that previously ran sequentially.
+    const [newPlan, updatedUser] = await Promise.all([
+      PlanBuy.create({
         userId,
         packageName: packageTitle,
         price: parseFloat(price),
         connectsAdded: addedConnects,
         stripeSessionId: sessionId,
         paymentStatus: "completed",
-      });
-
-      // 2. Increment Connects in User Document
-      const updatedUser = await User.findByIdAndUpdate(
+      }),
+      User.findByIdAndUpdate(
         userId,
         {
           $inc: { connects: addedConnects },
           currentPackage: packageTitle,
         },
         { new: true }
-      ).select("-password");
+      )
+        // Only the fields the client needs to refresh its session — previously
+        // this returned the whole user document including every base64 photo.
+        .select("_id firstName lastName email connects currentPackage isProfileComplete completedStep role")
+        .lean(),
+    ]);
 
-      return res.status(200).json({
-        success: true,
-        message: "Payment verified successfully!",
-        user: updatedUser,
-        plan: newPlan,
-      });
-    } else {
-      return res.status(400).json({ success: false, message: "Payment not completed" });
-    }
+    console.error(`[TIMING] verifyPayment (new) - ${Date.now() - requestStart}ms`);
+
+    return res.status(200).json({
+      success: true,
+      message: "Payment verified successfully!",
+      user: updatedUser,
+      plan: newPlan,
+    });
   } catch (error) {
     console.error("Payment Verification Error:", error);
     res.status(500).json({ success: false, message: error.message });

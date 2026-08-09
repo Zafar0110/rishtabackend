@@ -114,6 +114,8 @@ export const startOrGetConversation = async (req, res) => {
 const MAX_FILE_DATA_URL_LENGTH = 12 * 1024 * 1024;
 
 export const sendMessage = async (req, res) => {
+  // TEMPORARY performance diagnostics — remove once the slow-API cause is confirmed
+  const requestStart = Date.now();
   try {
     const { conversationId, senderId, receiverId, text, fileUrl, fileName, fileType, fileSize, fileDuration } = req.body;
 
@@ -132,6 +134,8 @@ export const sendMessage = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid Conversation ID" });
     }
 
+    console.error(`[TIMING] sendMessage - payload size: ${JSON.stringify(req.body).length} bytes`);
+
     // 1. Create Message in Database — the only DB round-trip on the response's
     // critical path. sender/receiver/conversationId are stored exactly as sent
     // (plain ObjectIds, which serialize to hex strings over JSON/socket) — no
@@ -139,6 +143,7 @@ export const sendMessage = async (req, res) => {
     // sender ID for left/right bubble alignment, never a populated name/avatar
     // on a per-message basis. Each populate() here used to cost a full extra
     // network round-trip to the database.
+    const createStart = Date.now();
     const newMessage = await Message.create({
       conversationId,
       sender: senderId,
@@ -150,6 +155,7 @@ export const sendMessage = async (req, res) => {
       fileSize: fileSize || 0,
       fileDuration: fileDuration || 0,
     });
+    console.error(`[TIMING] sendMessage - Message.create: ${Date.now() - createStart}ms`);
 
     // 2. Update the conversation's lastMessage in the background — intentionally
     // not awaited, since it's not needed for the sender's own response (they
@@ -182,6 +188,7 @@ export const sendMessage = async (req, res) => {
     }
 
     // 4. Respond immediately — frontend handles this optimistically
+    console.error(`[TIMING] sendMessage - TOTAL handler time: ${Date.now() - requestStart}ms`);
     return res.status(200).json({ success: true, message: newMessage });
 
   } catch (error) {
@@ -193,6 +200,8 @@ export const sendMessage = async (req, res) => {
 // @desc    Get All Messages for a Conversation
 // @route   GET /api/chat/messages/:conversationId
 export const getMessages = async (req, res) => {
+  // TEMPORARY performance diagnostics — remove once the slow-API cause is confirmed
+  const requestStart = Date.now();
   try {
     const { conversationId } = req.params;
 
@@ -207,6 +216,7 @@ export const getMessages = async (req, res) => {
       .sort({ createdAt: 1 })
       .lean();
 
+    console.error(`[TIMING] getMessages - query (${messages.length} msgs): ${Date.now() - requestStart}ms`);
     res.status(200).json({ success: true, messages });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -216,6 +226,8 @@ export const getMessages = async (req, res) => {
 // @desc    Get all conversations for a specific user
 // @route   GET /api/chat/conversations/:userId
 export const getUserConversations = async (req, res) => {
+  // TEMPORARY performance diagnostics — remove once the slow-API cause is confirmed
+  const requestStart = Date.now();
   try {
     const { userId } = req.params;
 
@@ -230,6 +242,7 @@ export const getUserConversations = async (req, res) => {
       .populate("lastMessage")
       .sort({ updatedAt: -1 });
 
+    console.error(`[TIMING] getUserConversations - query (${conversations.length} convs): ${Date.now() - requestStart}ms`);
     res.status(200).json({ success: true, conversations });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

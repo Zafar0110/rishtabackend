@@ -3,6 +3,7 @@ import express from "express";
 import dotenv from "dotenv";
 import http from "http";
 import cors from "cors";
+import compression from "compression";
 import { Server } from "socket.io";
 import connectDB from "./config/db.js";
 
@@ -17,8 +18,11 @@ const PASSENGER_PORT = process.env.PORT;
 dotenv.config();
 
 const app = express();
-const ALLOWED_ORIGIN = process.env.FRONTEND_URL || "https://rishtapoin-front.vercel.app";
+// Trim any trailing slash — a mismatched trailing slash would silently fail
+// the browser's Origin header comparison and break CORS for that domain.
+const ALLOWED_ORIGIN = (process.env.FRONTEND_URL || "https://rishtapoin-front.vercel.app").replace(/\/$/, "");
 
+app.use(compression());
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
@@ -55,6 +59,8 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   maxHttpBufferSize: 1e8, // 100 MB payload limit for large messages/attachments
+  pingTimeout: 60000, // more tolerant of slow responses on this hosting environment
+  pingInterval: 25000,
   cors: {
     origin: [ALLOWED_ORIGIN, "http://localhost:5173", "http://localhost:3000"],
     methods: ["GET", "POST"],

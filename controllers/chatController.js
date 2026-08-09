@@ -132,8 +132,14 @@ export const sendMessage = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid Conversation ID" });
     }
 
-    // 1. Create Message in Database (This is already VERY FAST)
-    let newMessage = await Message.create({
+    // 1. Create Message in Database — the only DB round-trip on the response's
+    // critical path. sender/receiver/conversationId are stored exactly as sent
+    // (plain ObjectIds, which serialize to hex strings over JSON/socket) — no
+    // re-fetch/populate needed, since the frontend only ever reads the raw
+    // sender ID for left/right bubble alignment, never a populated name/avatar
+    // on a per-message basis. Each populate() here used to cost a full extra
+    // network round-trip to the database.
+    const newMessage = await Message.create({
       conversationId,
       sender: senderId,
       receiver: receiverId,
@@ -145,29 +151,22 @@ export const sendMessage = async (req, res) => {
       fileDuration: fileDuration || 0,
     });
 
-    // 2. Populate details
-    newMessage = await Message.findById(newMessage._id)
-      .populate("sender", "firstName lastName profileImage basicInfo")
-      .populate("receiver", "firstName lastName profileImage basicInfo")
-      .populate("conversationId");
-
-    // 3. Update Last Message (Fast)
-    await Conversation.findByIdAndUpdate(conversationId, {
+    // 2. Update the conversation's lastMessage in the background — intentionally
+    // not awaited, since it's not needed for the sender's own response (they
+    // already have the message) and shouldn't add another round-trip of latency
+    // to every send.
+    Conversation.findByIdAndUpdate(conversationId, {
       lastMessage: newMessage._id,
       updatedAt: new Date(),
-    });
+    }).catch((err) => console.error("Background lastMessage update failed:", err));
 
-    // 🟢 4. BACKEND SOCKET BROADCAST (WRAP WITH OPTIONALITY FOR VERCEL)
-    // Hum try-catch block handle kar rahy hain agar socket connection crash ho bhi jaye backend request fail na ho.
+    // 3. Real-time socket broadcast (best-effort, never blocks the response)
     try {
       const io = req.app.get("io");
       if (io) {
         const targetReceiverId = cleanId(receiverId);
         const targetConvId = cleanId(conversationId);
 
-        console.log(`🚀 BACKEND EMIT (Optional) -> Receiver: [${targetReceiverId}] | Conv: [${targetConvId}]`);
-
-        // Emit only if connection seems active
         if (targetReceiverId) {
           io.to(targetReceiverId).emit("receive_message", newMessage);
           io.to(targetReceiverId).emit("new_unread_message", newMessage);
@@ -182,8 +181,7 @@ export const sendMessage = async (req, res) => {
       // Backend api success response block nahi hona chahye.
     }
 
-    // 🟢 5. RETURN SUCCESS FORAN (BINA DELAY)
-    // Frontend isse optimistic logic handle karega.
+    // 4. Respond immediately — frontend handles this optimistically
     return res.status(200).json({ success: true, message: newMessage });
 
   } catch (error) {
@@ -202,9 +200,12 @@ export const getMessages = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid Conversation ID" });
     }
 
+    // No populate — the frontend only reads the raw sender ID per-message
+    // (for left/right alignment), never a populated name/avatar. .lean()
+    // skips document hydration since these are read-only.
     const messages = await Message.find({ conversationId })
-      .populate("sender", "firstName lastName profileImage basicInfo")
-      .sort({ createdAt: 1 });
+      .sort({ createdAt: 1 })
+      .lean();
 
     res.status(200).json({ success: true, messages });
   } catch (error) {

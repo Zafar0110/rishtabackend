@@ -14,39 +14,44 @@ const cleanId = (val) => {
 // @desc    Initiate Chat or Get Existing Conversation & Deduct Connect if New
 // @route   POST /api/chat/start
 export const startOrGetConversation = async (req, res) => {
+  // TEMPORARY performance diagnostics — remove once the slow-API cause is confirmed
+  const requestStart = Date.now();
   try {
     const { senderId, receiverId } = req.body;
 
     // 1. Validate IDs presence
     if (!senderId || !receiverId) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Sender and Receiver IDs required" 
+      return res.status(400).json({
+        success: false,
+        message: "Sender and Receiver IDs required"
       });
     }
 
     // 2. Validate MongoDB ObjectId Format
     if (!mongoose.Types.ObjectId.isValid(senderId) || !mongoose.Types.ObjectId.isValid(receiverId)) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Invalid User ID format provided" 
+      return res.status(400).json({
+        success: false,
+        message: "Invalid User ID format provided"
       });
     }
 
     // 3. Prevent Self Chat
     if (senderId.toString() === receiverId.toString()) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "You cannot chat with yourself" 
+      return res.status(400).json({
+        success: false,
+        message: "You cannot chat with yourself"
       });
     }
 
     // 4. Check if conversation already exists
+    const existingCheckStart = Date.now();
     let conversation = await Conversation.findOne({
       participants: { $all: [senderId, receiverId], $size: 2 },
     }).populate("participants", "firstName lastName profileImage connects basicInfo");
+    console.error(`[TIMING] startChat - existing-conversation check: ${Date.now() - existingCheckStart}ms`);
 
     if (conversation) {
+      console.error(`[TIMING] startChat (existing) - TOTAL: ${Date.now() - requestStart}ms`);
       return res.status(200).json({
         success: true,
         isNew: false,
@@ -55,13 +60,18 @@ export const startOrGetConversation = async (req, res) => {
       });
     }
 
-    // 5. New Chat - Verify Sender & Connects
-    const sender = await User.findById(senderId);
+    // 5. New Chat - Verify Sender & Connects. Fetch both users concurrently
+    // instead of sequentially — they don't depend on each other.
+    const usersStart = Date.now();
+    const [sender, receiver] = await Promise.all([
+      User.findById(senderId),
+      User.findById(receiverId),
+    ]);
+    console.error(`[TIMING] startChat - parallel sender+receiver lookup: ${Date.now() - usersStart}ms`);
+
     if (!sender) {
       return res.status(404).json({ success: false, message: "Sender user not found" });
     }
-
-    const receiver = await User.findById(receiverId);
     if (!receiver) {
       return res.status(404).json({ success: false, message: "Receiver user not found" });
     }
@@ -76,28 +86,39 @@ export const startOrGetConversation = async (req, res) => {
       });
     }
 
-    // 6. Create New Conversation
-    conversation = await Conversation.create({
-      participants: [senderId, receiverId],
+    // 6. Create the conversation and deduct the connect concurrently — these
+    // are independent writes, no need to wait for one before the other.
+    const writeStart = Date.now();
+    const [newConversation] = await Promise.all([
+      Conversation.create({ participants: [senderId, receiverId] }),
+      User.updateOne({ _id: senderId }, { $set: { connects: userConnects - 1 } }),
+    ]);
+    console.error(`[TIMING] startChat - parallel create+deduct: ${Date.now() - writeStart}ms`);
+
+    // Build the populated shape from data already in memory (sender/receiver
+    // docs fetched above) instead of an extra findById().populate() round-trip.
+    const pickParticipant = (u) => ({
+      _id: u._id,
+      firstName: u.firstName,
+      lastName: u.lastName,
+      profileImage: u.profileImage,
+      connects: u._id.toString() === senderId.toString() ? userConnects - 1 : u.connects,
+      basicInfo: u.basicInfo,
     });
 
-    conversation = await Conversation.findById(conversation._id).populate(
-      "participants",
-      "firstName lastName profileImage connects basicInfo"
-    );
+    conversation = {
+      _id: newConversation._id,
+      participants: [pickParticipant(sender), pickParticipant(receiver)],
+      createdAt: newConversation.createdAt,
+      updatedAt: newConversation.updatedAt,
+    };
 
-    // 7. Deduct 1 Connect safely
-    const updatedSender = await User.findByIdAndUpdate(
-      senderId,
-      { $set: { connects: userConnects - 1 } },
-      { new: true }
-    );
-
+    console.error(`[TIMING] startChat (new) - TOTAL: ${Date.now() - requestStart}ms`);
     res.status(200).json({
       success: true,
       isNew: true,
       conversation,
-      remainingConnects: updatedSender.connects,
+      remainingConnects: userConnects - 1,
       message: "1 Connect deducted successfully. New chat started!",
     });
   } catch (error) {

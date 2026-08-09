@@ -139,12 +139,19 @@ export const getRecentProposals = async (req, res) => {
 
 
 export const getAllProfiles = async (req, res) => {
+  // TEMPORARY performance diagnostics — remove once the slow-API cause is confirmed
+  const requestStart = Date.now();
   try {
-    // 1. Database level query: Admins filter out honge aur Passwords/OTPs hide honge
+    // 1. Database level query: Admins filter out honge aur Passwords/OTPs hide honge.
+    // basicInfo.gallery is excluded too — Search.jsx (the only consumer of this
+    // endpoint) never reads it, and gallery photos can be large base64 blobs
+    // that were bloating this response for every single user in the list.
+    const queryStart = Date.now();
     const users = await User.find(
-      { role: { $ne: "admin" } }, 
-      "-password -otp -otpExpires"
+      { role: { $ne: "admin" } },
+      "-password -otp -otpExpires -basicInfo.gallery"
     ).lean();
+    console.error(`[TIMING] getAllProfiles - query (${users.length} users): ${Date.now() - queryStart}ms`);
 
     // 2. Clean Frontend Data Mapping
     const profiles = users.map((u) => {
@@ -163,7 +170,6 @@ export const getAllProfiles = async (req, res) => {
         
         // Basic Info
         image: basic.featuredImage || "/assets/homepage/proposal/first.webp",
-        gallery: basic.gallery || [],
         gender: basic.gender || "Male",
         maritalStatus: basic.maritalStatus || "Single",
         age: basic.age || 0,
@@ -196,11 +202,11 @@ export const getAllProfiles = async (req, res) => {
       };
     });
 
-    return res.status(200).json({
-      success: true,
-      count: profiles.length,
-      profiles,
-    });
+    const responseBody = { success: true, count: profiles.length, profiles };
+    const sizeKB = (JSON.stringify(responseBody).length / 1024).toFixed(1);
+    console.error(`[TIMING] getAllProfiles - response size: ${sizeKB}KB, TOTAL: ${Date.now() - requestStart}ms`);
+
+    return res.status(200).json(responseBody);
   } catch (error) {
     console.error("Error in getAllProfiles:", error);
     return res.status(500).json({

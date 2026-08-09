@@ -296,44 +296,54 @@ export const getUserConversations = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid User ID" });
     }
 
-    // Mongoose runs chained .populate() calls as SEPARATE sequential queries,
-    // which measured as exactly 2x the single-query cost on production. So we
-    // fetch the raw conversations first, then resolve both populates
-    // concurrently ourselves and stitch the results together in memory.
+    // Single aggregation instead of find()+populate()+populate(). Each separate
+    // query is a full network round-trip to Atlas (~267ms measured), so any
+    // multi-stage approach costs a multiple of that. $lookup makes MongoDB do
+    // both joins server-side, returning everything in ONE round-trip.
     //
     // Both lookups are field-limited so no base64 blobs ride along:
     //  - participants: only the avatar/name fields the inbox actually renders,
     //    NOT the whole basicInfo object with its gallery array.
     //  - lastMessage: only what the preview line shows — excludes fileUrl.
-    const conversations = await Conversation.find({ participants: userId })
-      .sort({ updatedAt: -1 })
-      .lean();
-
-    const participantIds = [...new Set(conversations.flatMap((c) => (c.participants || []).map(String)))];
-    const lastMessageIds = conversations.map((c) => c.lastMessage).filter(Boolean);
-
-    const [users, lastMessages] = await Promise.all([
-      User.find({ _id: { $in: participantIds } })
-        .select("firstName lastName profileImage basicInfo.featuredImage basicInfo.gender")
-        .lean(),
-      lastMessageIds.length
-        ? Message.find({ _id: { $in: lastMessageIds } })
-            .select("text fileName fileType createdAt sender")
-            .lean()
-        : Promise.resolve([]),
+    const conversations = await Conversation.aggregate([
+      { $match: { participants: new mongoose.Types.ObjectId(userId) } },
+      { $sort: { updatedAt: -1 } },
+      {
+        $lookup: {
+          from: "users",
+          localField: "participants",
+          foreignField: "_id",
+          as: "participants",
+          pipeline: [
+            {
+              $project: {
+                firstName: 1,
+                lastName: 1,
+                profileImage: 1,
+                "basicInfo.featuredImage": 1,
+                "basicInfo.gender": 1,
+              },
+            },
+          ],
+        },
+      },
+      {
+        $lookup: {
+          from: "messages",
+          localField: "lastMessage",
+          foreignField: "_id",
+          as: "lastMessage",
+          pipeline: [
+            { $project: { text: 1, fileName: 1, fileType: 1, createdAt: 1, sender: 1 } },
+          ],
+        },
+      },
+      // $lookup always returns an array; flatten lastMessage back to an object
+      { $addFields: { lastMessage: { $arrayElemAt: ["$lastMessage", 0] } } },
     ]);
 
-    const userMap = new Map(users.map((u) => [String(u._id), u]));
-    const messageMap = new Map(lastMessages.map((m) => [String(m._id), m]));
-
-    const hydrated = conversations.map((c) => ({
-      ...c,
-      participants: (c.participants || []).map((p) => userMap.get(String(p)) || p),
-      lastMessage: c.lastMessage ? messageMap.get(String(c.lastMessage)) || null : null,
-    }));
-
     console.error(`[TIMING] getUserConversations - query (${conversations.length} convs): ${Date.now() - requestStart}ms`);
-    res.status(200).json({ success: true, conversations: hydrated });
+    res.status(200).json({ success: true, conversations });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

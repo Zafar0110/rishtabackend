@@ -27,6 +27,8 @@ const messageSchema = new mongoose.Schema(
     fileName: { type: String, default: "" },
     fileType: { type: String, default: "" },
     fileSize: { type: Number, default: 0 },
+    // Recorded duration in seconds — only meaningful for audio/* attachments (voice notes)
+    fileDuration: { type: Number, default: 0 },
     isRead: {
       type: Boolean,
       default: false,

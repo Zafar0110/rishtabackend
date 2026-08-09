@@ -115,7 +115,7 @@ const MAX_FILE_DATA_URL_LENGTH = 12 * 1024 * 1024;
 
 export const sendMessage = async (req, res) => {
   try {
-    const { conversationId, senderId, receiverId, text, fileUrl, fileName, fileType, fileSize } = req.body;
+    const { conversationId, senderId, receiverId, text, fileUrl, fileName, fileType, fileSize, fileDuration } = req.body;
 
     const trimmedText = (text || "").trim();
     const hasFile = !!fileUrl;
@@ -142,6 +142,7 @@ export const sendMessage = async (req, res) => {
       fileName: fileName || "",
       fileType: fileType || "",
       fileSize: fileSize || 0,
+      fileDuration: fileDuration || 0,
     });
 
     // 2. Populate details

@@ -1,8 +1,8 @@
 import "./polyfills.js";
-import mongoose from "mongoose";
 import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
 import User from "./models/User.js"; // Path verified matching user model
+import connectDB from "./config/db.js";
 
 dotenv.config();
 
@@ -156,7 +156,7 @@ const generate20Users = async () => {
 
 const seedData = async () => {
   try {
-    await mongoose.connect(process.env.MONGO_URI);
+    await connectDB();
     console.log("🔗 MongoDB Connected for Seeding...");
 
     // Remove previous dummy accounts matching @example.com

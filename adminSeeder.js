@@ -1,15 +1,15 @@
 import "./polyfills.js";
-import mongoose from "mongoose";
 import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
 import User from "./models/User.js"; // Path check kar lein
+import connectDB from "./config/db.js";
 
 dotenv.config();
 
 const seedAdmin = async () => {
   try {
-    // 1. Database Connection
-    await mongoose.connect(process.env.MONGO_URI);
+    // 1. Database Connection (same DNS-resilient connectDB used by the live server)
+    await connectDB();
     console.log("✅ MongoDB Connected for Admin Seeder");
 
     const adminEmail = "admin@gmail.com";

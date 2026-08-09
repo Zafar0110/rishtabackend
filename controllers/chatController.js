@@ -233,12 +233,52 @@ export const getMessages = async (req, res) => {
     // No populate — the frontend only reads the raw sender ID per-message
     // (for left/right alignment), never a populated name/avatar. .lean()
     // skips document hydration since these are read-only.
+    //
+    // fileUrl (the base64 attachment blob) is deliberately EXCLUDED here: a
+    // thread of only 7-21 messages was measured at 1.3-1.9s on production
+    // purely because every attachment's full binary was dragged along. The
+    // remaining file metadata (name/type/size/duration) is enough to render
+    // the bubble immediately; the blob itself is fetched on demand per
+    // attachment via GET /api/chat/attachment/:messageId.
     const messages = await Message.find({ conversationId })
+      .select("-fileUrl")
       .sort({ createdAt: 1 })
       .lean();
 
+    // Flag which messages have an attachment to lazy-load, without shipping it.
+    const withFlags = messages.map((m) => ({
+      ...m,
+      hasAttachment: !!m.fileName || !!m.fileType,
+    }));
+
     console.error(`[TIMING] getMessages - query (${messages.length} msgs): ${Date.now() - requestStart}ms`);
-    res.status(200).json({ success: true, messages });
+    res.status(200).json({ success: true, messages: withFlags });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Fetch a single message's attachment blob (lazy-loaded by the client)
+// @route   GET /api/chat/attachment/:messageId
+export const getMessageAttachment = async (req, res) => {
+  const requestStart = Date.now();
+  try {
+    const { messageId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(messageId)) {
+      return res.status(400).json({ success: false, message: "Invalid Message ID" });
+    }
+
+    const message = await Message.findById(messageId)
+      .select("fileUrl fileName fileType fileSize fileDuration")
+      .lean();
+
+    if (!message || !message.fileUrl) {
+      return res.status(404).json({ success: false, message: "Attachment not found" });
+    }
+
+    console.error(`[TIMING] getMessageAttachment - ${Date.now() - requestStart}ms`);
+    res.status(200).json({ success: true, attachment: message });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -256,12 +296,18 @@ export const getUserConversations = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid User ID" });
     }
 
+    // Both populates are field-limited so no base64 blobs ride along:
+    //  - participants: only the avatar/name fields the inbox actually renders
+    //    (basicInfo.featuredImage + gender), NOT the whole basicInfo object
+    //    with its gallery array.
+    //  - lastMessage: only what the preview line shows — excludes fileUrl.
     const conversations = await Conversation.find({
       participants: userId,
     })
-      .populate("participants", "firstName lastName profileImage basicInfo")
-      .populate("lastMessage")
-      .sort({ updatedAt: -1 });
+      .populate("participants", "firstName lastName profileImage basicInfo.featuredImage basicInfo.gender")
+      .populate("lastMessage", "text fileName fileType createdAt sender")
+      .sort({ updatedAt: -1 })
+      .lean();
 
     console.error(`[TIMING] getUserConversations - query (${conversations.length} convs): ${Date.now() - requestStart}ms`);
     res.status(200).json({ success: true, conversations });

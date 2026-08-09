@@ -32,8 +32,14 @@ app.use(
 );
 
 app.use(async (req, res, next) => {
+  // TEMPORARY performance diagnostics — remove once the slow-API cause is confirmed
+  const dbStart = Date.now();
   try {
     await connectDB();
+    const dbTime = Date.now() - dbStart;
+    if (req.originalUrl.includes("/auth/login")) {
+      console.log(`[TIMING] DB connect/reuse for ${req.method} ${req.originalUrl}: ${dbTime}ms`);
+    }
     next();
   } catch (error) {
     console.error("Database connection failure:", error);

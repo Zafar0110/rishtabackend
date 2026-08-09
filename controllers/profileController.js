@@ -17,6 +17,8 @@ export const getUserProfile = async (req, res) => {
 // @desc    Save step data dynamically
 // @route   PUT /api/profile/save-step
 export const saveProfileStep = async (req, res) => {
+  // TEMPORARY performance diagnostics — remove once the slow-API cause is confirmed
+  const requestStart = Date.now();
   try {
     const { userId, step, stepData } = req.body;
 
@@ -24,52 +26,62 @@ export const saveProfileStep = async (req, res) => {
       return res.status(400).json({ message: "Missing required parameters" });
     }
 
-    const user = await User.findById(userId);
-    if (!user) {
+    // Which embedded object this step writes into
+    const stepFieldMap = {
+      1: "basicInfo",
+      2: "religiousInfo",
+      3: "locationInfo",
+      4: "familyInfo",
+      5: "educationInfo",
+      6: "proposalDetail",
+      7: "partnerExpectations",
+    };
+
+    const stepNumber = Number(step);
+    const targetField = stepFieldMap[stepNumber];
+
+    if (!targetField) {
+      return res.status(400).json({ message: "Invalid step number" });
+    }
+
+    // Build a dot-notation $set so only the changed keys are written. The old
+    // implementation did findById() -> mutate -> user.save(), which round-
+    // tripped the ENTIRE user document (including every base64 profile/gallery
+    // photo) twice, then returned it in the response a third time. Now it's a
+    // single targeted update that sends only the fields being changed.
+    const setOps = {};
+    for (const [key, value] of Object.entries(stepData)) {
+      setOps[`${targetField}.${key}`] = value;
+    }
+
+    if (stepNumber === 7) {
+      setOps.isProfileComplete = true; // Final step completion
+    }
+
+    const updateOps = {
+      $set: setOps,
+      // Only ever raise completedStep, never lower it (matches previous logic)
+      $max: { completedStep: stepNumber },
+    };
+
+    const result = await User.updateOne({ _id: userId }, updateOps);
+
+    if (result.matchedCount === 0) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Step-wise Data Mapping
-    switch (Number(step)) {
-      case 1:
-        user.basicInfo = { ...user.basicInfo, ...stepData };
-        break;
-      case 2:
-        user.religiousInfo = { ...user.religiousInfo, ...stepData };
-        break;
-      case 3:
-        user.locationInfo = { ...user.locationInfo, ...stepData };
-        break;
-      case 4:
-        user.familyInfo = { ...user.familyInfo, ...stepData };
-        break;
-      case 5:
-        user.educationInfo = { ...user.educationInfo, ...stepData };
-        break;
-      case 6:
-        user.proposalDetail = { ...user.proposalDetail, ...stepData };
-        break;
-      case 7:
-        user.partnerExpectations = { ...user.partnerExpectations, ...stepData };
-        user.isProfileComplete = true; // Final step completion
-        break;
-      default:
-        return res.status(400).json({ message: "Invalid step number" });
-    }
+    console.error(`[TIMING] saveProfileStep (step ${stepNumber}) - ${Date.now() - requestStart}ms`);
 
-    // Update highest completed step
-    if (user.completedStep < Number(step)) {
-      user.completedStep = Number(step);
-    }
-
-    await user.save();
-
+    // The full user object is deliberately NOT returned — none of the 14
+    // frontend callers read the response body, and sending it back meant
+    // shipping every base64 photo over the wire again.
     res.status(200).json({
       success: true,
       message: `Step ${step} saved successfully`,
-      user,
+      completedStep: stepNumber,
     });
   } catch (error) {
+    console.error("saveProfileStep Error:", error);
     res.status(500).json({ message: error.message });
   }
 };

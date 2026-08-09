@@ -270,7 +270,7 @@ export const loginUser = async (req, res) => {
 
     const lookupStart = Date.now();
     const user = await User.findOne({ email: normalizedEmail });
-    console.log(`[TIMING] Login - user lookup: ${Date.now() - lookupStart}ms`);
+    console.error(`[TIMING] Login - user lookup: ${Date.now() - lookupStart}ms`);
 
     if (!user) {
       return res.status(401).json({ message: "Invalid email or password" });
@@ -290,7 +290,7 @@ export const loginUser = async (req, res) => {
     // Compare Password
     const compareStart = Date.now();
     const isMatch = await bcrypt.compare(password, user.password);
-    console.log(`[TIMING] Login - bcrypt compare: ${Date.now() - compareStart}ms`);
+    console.error(`[TIMING] Login - bcrypt compare: ${Date.now() - compareStart}ms`);
 
     if (!isMatch) {
       return res.status(401).json({ message: "Invalid email or password" });
@@ -299,9 +299,9 @@ export const loginUser = async (req, res) => {
     // Generate Token
     const tokenStart = Date.now();
     const token = generateToken(user._id);
-    console.log(`[TIMING] Login - token generation: ${Date.now() - tokenStart}ms`);
+    console.error(`[TIMING] Login - token generation: ${Date.now() - tokenStart}ms`);
 
-    console.log(`[TIMING] Login - TOTAL handler time: ${Date.now() - requestStart}ms`);
+    console.error(`[TIMING] Login - TOTAL handler time: ${Date.now() - requestStart}ms`);
 
     // ✅ Clean Response with Role included
     res.status(200).json({

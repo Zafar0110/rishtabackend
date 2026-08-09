@@ -38,7 +38,7 @@ app.use(async (req, res, next) => {
     await connectDB();
     const dbTime = Date.now() - dbStart;
     if (req.originalUrl.includes("/auth/login")) {
-      console.log(`[TIMING] DB connect/reuse for ${req.method} ${req.originalUrl}: ${dbTime}ms`);
+      console.error(`[TIMING] DB connect/reuse for ${req.method} ${req.originalUrl}: ${dbTime}ms`);
     }
     next();
   } catch (error) {

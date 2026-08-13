@@ -11,6 +11,11 @@ const rishtaExpertSchema = new mongoose.Schema(
     // rejected rather than quietly stored.
     profileImage: { type: String, required: true },
 
+    // Approval switch. Defaults to false so a fresh application is never shown
+    // publicly until an admin activates it; once true the expert is listed in
+    // "Professional Experts" on the match-makers page.
+    isActive: { type: Boolean, default: false },
+
     // False until an admin opens the Expert tab. Drives the red "unseen" badge.
     // Records created before this field existed read as undefined, which is
     // falsy — so they correctly count as unseen rather than being hidden.

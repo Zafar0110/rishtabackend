@@ -95,7 +95,12 @@ export const getAllExperts = async (req, res) => {
       .sort({ createdAt: -1, _id: -1 })
       .lean();
 
-    const payload = experts.map((e) => ({ ...e, hasPhoto: true, isSeen: e.isSeen === true }));
+    const payload = experts.map((e) => ({
+      ...e,
+      hasPhoto: true,
+      isSeen: e.isSeen === true,
+      isActive: e.isActive === true,
+    }));
 
     return res.status(200).json({
       success: true,
@@ -110,6 +115,85 @@ export const getAllExperts = async (req, res) => {
       message: "Server error fetching expert registrations",
       error: error.message,
     });
+  }
+};
+
+// @desc    Public: the activated experts shown in "Professional Experts"
+// @route   GET /api/expert/active
+//
+// Email is deliberately never returned here — only what the public card renders.
+// The phone is included because the card's WhatsApp button needs it, which is
+// the whole point of listing an expert publicly.
+export const getActiveExperts = async (req, res) => {
+  try {
+    const experts = await RishtaExpert.find({ isActive: true })
+      .select("fullName phone createdAt")
+      .sort({ createdAt: -1, _id: -1 })
+      .lean();
+
+    return res.status(200).json({ success: true, count: experts.length, experts });
+  } catch (error) {
+    console.error("Get Active Experts Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error fetching experts",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Admin: activate / deactivate an expert
+// @route   PUT /api/expert/:id/status   (protectAdmin)
+export const toggleExpertStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { isActive } = req.body;
+
+    if (typeof isActive !== "boolean") {
+      return res.status(400).json({ success: false, message: "isActive (boolean) is required" });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: "Invalid ID" });
+    }
+
+    const result = await RishtaExpert.updateOne({ _id: id }, { $set: { isActive } });
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ success: false, message: "Expert not found" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: isActive
+        ? "Expert activated and is now listed publicly"
+        : "Expert deactivated and removed from the public page",
+      expert: { _id: id, isActive },
+    });
+  } catch (error) {
+    console.error("Toggle Expert Status Error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Admin: permanently delete an expert registration
+// @route   DELETE /api/expert/:id   (protectAdmin)
+export const deleteExpert = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: "Invalid ID" });
+    }
+
+    const result = await RishtaExpert.deleteOne({ _id: id });
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ success: false, message: "Expert not found" });
+    }
+
+    return res.status(200).json({ success: true, message: "Expert registration deleted" });
+  } catch (error) {
+    console.error("Delete Expert Error:", error);
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 

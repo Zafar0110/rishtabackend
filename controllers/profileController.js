@@ -137,7 +137,20 @@ export const getUserAvatar = async (req, res) => {
     const user = await User.findById(userId).select("basicInfo.featuredImage").lean();
     const dataUrl = user?.basicInfo?.featuredImage;
 
-    if (!dataUrl || !dataUrl.startsWith("data:")) {
+    if (!dataUrl) {
+      return res.status(404).json({ success: false, message: "No avatar set" });
+    }
+
+    // Photos uploaded through the app are base64 data URLs, but some profiles
+    // store a plain image URL instead. Those used to 404 here, which made every
+    // list that relies on this endpoint fall back to a generic stock avatar —
+    // hand the caller on to the real image instead.
+    if (/^https?:\/\//i.test(dataUrl)) {
+      res.set("Cache-Control", "public, max-age=86400");
+      return res.redirect(302, dataUrl);
+    }
+
+    if (!dataUrl.startsWith("data:")) {
       return res.status(404).json({ success: false, message: "No avatar set" });
     }
 
@@ -154,6 +167,47 @@ export const getUserAvatar = async (req, res) => {
   } catch (error) {
     console.error("getUserAvatar Error:", error);
     return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Only what the homepage "Serious Marriage Seekers" card renders. Same rules as
+// PROPOSAL_CARD_FIELDS above — no gallery, and the avatar is stripped to a flag
+// so the payload stays small and photos load from the cacheable avatar route.
+const SEEKER_CARD_FIELDS = [
+  "firstName",
+  "lastName",
+  "basicInfo.featuredImage",
+  "basicInfo.gender",
+  "basicInfo.age",
+  "educationInfo.profession",
+  "locationInfo.residenceCity",
+  "locationInfo.residenceCountry",
+].join(" ");
+
+// @desc    Users an admin has hand-picked for the homepage seekers slider
+// @route   GET /api/profile/serious-seekers
+export const getSeriousSeekers = async (req, res) => {
+  const requestStart = Date.now();
+  try {
+    // Deliberately NOT filtered by isProfileComplete: whoever the admin ticks is
+    // exactly who appears, so the admin screen can't silently disagree with the
+    // homepage. The card falls back gracefully on any missing field.
+    const users = await User.find({ isSeriousSeeker: true, role: { $ne: "admin" } })
+      .select(SEEKER_CARD_FIELDS)
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    const payload = users.map(stripAvatar);
+    console.error(`[TIMING] getSeriousSeekers - ${payload.length} users, ${Date.now() - requestStart}ms`);
+
+    return res.status(200).json({ success: true, count: payload.length, users: payload });
+  } catch (error) {
+    console.error("Error in getSeriousSeekers:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error fetching serious marriage seekers",
+      error: error.message,
+    });
   }
 };
 

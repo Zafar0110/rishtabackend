@@ -96,7 +96,7 @@ export const getAllUsers = async (req, res) => {
   try {
     const users = await User.find({ role: { $ne: "admin" } })
       .select(
-        "firstName lastName email phone isVerified isActive isProfileComplete completedStep locationInfo.residenceCountry basicInfo.featuredImage basicInfo.gender createdAt"
+        "firstName lastName email phone isVerified isActive isProfileComplete completedStep isSeriousSeeker locationInfo.residenceCountry basicInfo.featuredImage basicInfo.gender basicInfo.age educationInfo.profession createdAt"
       )
       .sort({ createdAt: -1 })
       .lean();
@@ -109,9 +109,12 @@ export const getAllUsers = async (req, res) => {
       country: u.locationInfo?.residenceCountry || "",
       image: u.basicInfo?.featuredImage || "",
       gender: u.basicInfo?.gender || "Male",
+      age: u.basicInfo?.age || 0,
+      profession: u.educationInfo?.profession || "",
       isVerified: u.isVerified,
       isActive: u.isActive !== false,
       isProfileComplete: u.isProfileComplete,
+      isSeriousSeeker: u.isSeriousSeeker === true,
       createdAt: u.createdAt,
     }));
 
@@ -125,6 +128,50 @@ export const getAllUsers = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Server Error fetching users",
+      error: error.message,
+    });
+  }
+};
+
+// Add / remove a user from the homepage "Serious Marriage Seekers" section
+export const toggleSeriousSeeker = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { isSeriousSeeker } = req.body;
+
+    if (typeof isSeriousSeeker !== "boolean") {
+      return res
+        .status(400)
+        .json({ success: false, message: "isSeriousSeeker (boolean) is required" });
+    }
+
+    const user = await User.findById(id).select("role");
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    // Staff accounts are never shown as proposals anywhere else, so they can't
+    // be featured here either.
+    if (user.role === "admin") {
+      return res
+        .status(403)
+        .json({ success: false, message: "Admin accounts cannot be featured" });
+    }
+
+    await User.updateOne({ _id: id }, { $set: { isSeriousSeeker } });
+
+    return res.status(200).json({
+      success: true,
+      message: isSeriousSeeker
+        ? "User added to Serious Marriage Seekers"
+        : "User removed from Serious Marriage Seekers",
+      user: { _id: id, isSeriousSeeker },
+    });
+  } catch (error) {
+    console.error("Toggle Serious Seeker Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error updating featured status",
       error: error.message,
     });
   }

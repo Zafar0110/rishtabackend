@@ -15,6 +15,11 @@ const userSchema = new mongoose.Schema(
     connects: { type: Number, default: 5 },
     currentPackage: { type: String, default: "Free" },
 
+    // Hand-picked by an admin to appear in the "Serious Marriage Seekers"
+    // section on the public homepage. Nothing else reads this flag, and it is
+    // never set by the user themselves.
+    isSeriousSeeker: { type: Boolean, default: false },
+
     // Email Verification Status
     isVerified: { type: Boolean, default: false },
     otp: { type: String },

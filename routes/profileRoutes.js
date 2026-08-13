@@ -4,7 +4,8 @@ import {
   saveProfileStep,
   getRecentProposals ,
   getAllProfiles,
-  getUserAvatar
+  getUserAvatar,
+  getSeriousSeekers
 } from "../controllers/profileController.js";
 
 const router = express.Router();
@@ -12,6 +13,7 @@ const router = express.Router();
 // 1. Specific route pehle aayega (Slider/Recent proposals ke liye)
 router.get("/recent-proposals/:userId", getRecentProposals);
 router.get("/all", getAllProfiles);
+router.get("/serious-seekers", getSeriousSeekers);   // 👈 Homepage seekers slider
 router.get("/avatar/:userId", getUserAvatar);   // 👈 Cacheable profile photo
 // 2. Profile update route
 router.put("/save-step", saveProfileStep);

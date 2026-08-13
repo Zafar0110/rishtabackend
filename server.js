@@ -12,6 +12,7 @@ import profileRoutes from "./routes/profileRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 import chatRoutes from "./routes/chatRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
+import expertRoutes from "./routes/expertRoutes.js";
 // ðŸŸ¢ Save cPanel's assigned PORT before dotenv runs
 const PASSENGER_PORT = process.env.PORT;
 
@@ -107,6 +108,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/payment", paymentRoutes);
 app.use("/api/chat", chatRoutes);
+app.use("/api/expert", expertRoutes);
 
 app.get("/", (req, res) => {
   res.send("Rishta Point API Running...");

@@ -148,7 +148,10 @@ export const getUserPlanHistory = async (req, res) => {
   try {
     const { userId } = req.params;
 
-    const user = await User.findById(userId).select("currentPackage connects");
+    // createdAt is the signup date, which the client uses to date the built-in
+    // "Free" row in the purchase history — the 5 starter connects every account
+    // gets are never a PlanBuy record, so there is nothing else to date it by.
+    const user = await User.findById(userId).select("currentPackage connects createdAt");
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found" });
     }
@@ -159,6 +162,7 @@ export const getUserPlanHistory = async (req, res) => {
       success: true,
       currentPackage: user.currentPackage || "Free",
       totalConnects: user.connects || 5,
+      memberSince: user.createdAt,
       history,
     });
   } catch (error) {

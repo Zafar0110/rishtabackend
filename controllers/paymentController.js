@@ -51,7 +51,7 @@ export const createCheckoutSession = async (req, res) => {
         },
       };
   
-      // 👈 Auto-fill Customer Email on Stripe Checkout
+      //   Auto-fill Customer Email on Stripe Checkout
       if (userEmail) {
         sessionData.customer_email = userEmail;
       }
@@ -155,7 +155,8 @@ export const getUserPlanHistory = async (req, res) => {
     res.status(200).json({
       success: true,
       currentPackage: user.currentPackage || "Free",
-      totalConnects: user.connects || 5,
+       
+      totalConnects: user.connects ?? 5,
       memberSince: user.createdAt,
       history,
     });

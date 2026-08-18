@@ -1,24 +1,22 @@
 import User from "../models/User.js";
 
-// Get Admin Dashboard Real-Time Analytics
+ 
 export const getAdminDashboardStats = async (req, res) => {
   try {
-    // 1. Total Registered Users (excluding Admins)
-    const totalUsers = await User.countDocuments({ role: { $ne: "admin" } });
-
-    // 2. Active Proposals (Completed 7-Step Profiles)
+     
+    const totalUsers = await User.countDocuments({ role: { $ne: "admin" } }); 
     const activeProposals = await User.countDocuments({ 
       role: { $ne: "admin" }, 
       isProfileComplete: true 
     });
 
-    // 3. Pending Verifications (Unverified Email Accounts)
+    
     const pendingVerifications = await User.countDocuments({ 
       role: { $ne: "admin" }, 
       isVerified: false 
     });
 
-    // 4. Monthly Growth Calculation (Current Month vs Last Month)
+    
     const now = new Date();
     const startOfCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const startOfPreviousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
@@ -40,7 +38,7 @@ export const getAdminDashboardStats = async (req, res) => {
       growthRate = 100;
     }
 
-    // 5. Month-wise User Count Aggregation for Current Year (Jan to Dec)
+     
     const startOfYear = new Date(now.getFullYear(), 0, 1);
     const endOfYear = new Date(now.getFullYear(), 11, 31, 23, 59, 59);
 
@@ -53,7 +51,7 @@ export const getAdminDashboardStats = async (req, res) => {
       },
       {
         $group: {
-          _id: { $month: "$createdAt" }, // Mongo $month returns 1 (Jan) to 12 (Dec)
+          _id: { $month: "$createdAt" }, 
           count: { $sum: 1 },
         },
       },
@@ -150,8 +148,7 @@ export const toggleSeriousSeeker = async (req, res) => {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    // Staff accounts are never shown as proposals anywhere else, so they can't
-    // be featured here either.
+    
     if (user.role === "admin") {
       return res
         .status(403)
@@ -177,7 +174,7 @@ export const toggleSeriousSeeker = async (req, res) => {
   }
 };
 
-// Activate / Deactivate a User Account (blocks login while inactive)
+// Activate / Deactivate a User Account  
 export const toggleUserStatus = async (req, res) => {
   try {
     const { id } = req.params;

@@ -1,25 +1,25 @@
 import "./polyfills.js";
 import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
-import User from "./models/User.js"; // Path check kar lein
+import User from "./models/User.js";  
 import connectDB from "./config/db.js";
 
 dotenv.config();
 
 const seedAdmin = async () => {
   try {
-    // 1. Database Connection (same DNS-resilient connectDB used by the live server)
+    //   Database Connection  
     await connectDB();
     console.log("✅ MongoDB Connected for Admin Seeder");
 
     const adminEmail = "admin@gmail.com";
     const plainPassword = "123123123";
 
-    // 2. Hash Password
+    //   Hash Password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(plainPassword, salt);
 
-    // 3. Find existing or create new admin
+    //   Find existing or create new admin
     let adminUser = await User.findOne({ email: adminEmail });
 
     if (adminUser) {
@@ -43,18 +43,18 @@ const seedAdmin = async () => {
         isProfileComplete: true,
       });
       await adminUser.save();
-      console.log("🎉 New Admin Created Successfully!");
+      console.log("  New Admin Created Successfully!");
     }
 
-    console.log("-----------------------------------------");
-    console.log("📧 Email:", adminEmail);
-    console.log("🔑 Password:", plainPassword);
-    console.log("🛡️ Role:", adminUser.role);
-    console.log("-----------------------------------------");
+    
+    console.log("  Email:", adminEmail);
+    console.log("  Password:", plainPassword);
+    console.log("  Role:", adminUser.role);
+    
 
     process.exit(0);
   } catch (error) {
-    console.error("❌ Error Seeding Admin:", error.message);
+    console.error("  Error Seeding Admin:", error.message);
     process.exit(1);
   }
 };

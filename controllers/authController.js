@@ -200,59 +200,7 @@ export const verifyOTP = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
-// @desc    Login User
-// @route   POST /api/auth/login
-// export const loginUser = async (req, res) => {
-//   try {
-//     const { email, password } = req.body;
-
-//     if (!email || !password) {
-//       return res.status(400).json({ message: "Please provide both email and password" });
-//     }
-
-//     const normalizedEmail = email.trim().toLowerCase();
-//     const user = await User.findOne({ email: normalizedEmail });
-
-//     if (!user) {
-//       return res.status(401).json({ message: "Invalid email or password" });
-//     }
-
-//     if (!user.isVerified) {
-//       return res.status(401).json({ message: "Please verify your email before logging in!" });
-//     }
-
-//     // Compare Password
-//     const isMatch = await bcrypt.compare(password, user.password);
-
-//     if (!isMatch) {
-//       return res.status(401).json({ message: "Invalid email or password" });
-//     }
-
-//     // Generate Token
-//     const token = generateToken(user._id);
-
-//     // ✅ Clean Response for Frontend LoginHero Component
-//     res.status(200).json({
-//       success: true,
-//       token,
-//       user: {
-//         _id: user._id,
-//         firstName: user.firstName,
-//         lastName: user.lastName,
-//         fullName: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
-//         email: user.email,
-//         isProfileComplete: user.isProfileComplete || false,
-//         completedStep: user.completedStep || 0,
-//       },
-//       message: "Login successful!",
-//     });
-
-//   } catch (error) {
-//     console.error("Login Controller Error:", error);
-//     res.status(500).json({ message: error.message });
-//   }
-// };
+ 
 
 
 

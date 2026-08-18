@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 // @desc    Get complete profile data for pre-filling inputs
 // @route   GET /api/profile/:userId
 export const getUserProfile = async (req, res) => {
-  // TEMPORARY performance diagnostics — remove once the slow-API cause is confirmed
+  
   const requestStart = Date.now();
   try {
     const user = await User.findById(req.params.userId)
@@ -22,8 +22,7 @@ export const getUserProfile = async (req, res) => {
 
 // @desc    Save step data dynamically
 // @route   PUT /api/profile/save-step
-export const saveProfileStep = async (req, res) => {
-  // TEMPORARY performance diagnostics — remove once the slow-API cause is confirmed
+export const saveProfileStep = async (req, res) => { 
   const requestStart = Date.now();
   try {
     const { userId, step, stepData } = req.body;
@@ -32,7 +31,7 @@ export const saveProfileStep = async (req, res) => {
       return res.status(400).json({ message: "Missing required parameters" });
     }
 
-    // Which embedded object this step writes into
+    
     const stepFieldMap = {
       1: "basicInfo",
       2: "religiousInfo",
@@ -50,23 +49,19 @@ export const saveProfileStep = async (req, res) => {
       return res.status(400).json({ message: "Invalid step number" });
     }
 
-    // Build a dot-notation $set so only the changed keys are written. The old
-    // implementation did findById() -> mutate -> user.save(), which round-
-    // tripped the ENTIRE user document (including every base64 profile/gallery
-    // photo) twice, then returned it in the response a third time. Now it's a
-    // single targeted update that sends only the fields being changed.
+     
     const setOps = {};
     for (const [key, value] of Object.entries(stepData)) {
       setOps[`${targetField}.${key}`] = value;
     }
 
     if (stepNumber === 7) {
-      setOps.isProfileComplete = true; // Final step completion
+      setOps.isProfileComplete = true; 
     }
 
     const updateOps = {
       $set: setOps,
-      // Only ever raise completedStep, never lower it (matches previous logic)
+      
       $max: { completedStep: stepNumber },
     };
 
@@ -78,9 +73,7 @@ export const saveProfileStep = async (req, res) => {
 
     console.error(`[TIMING] saveProfileStep (step ${stepNumber}) - ${Date.now() - requestStart}ms`);
 
-    // The full user object is deliberately NOT returned — none of the 14
-    // frontend callers read the response body, and sending it back meant
-    // shipping every base64 photo over the wire again.
+     
     res.status(200).json({
       success: true,
       message: `Step ${step} saved successfully`,
@@ -91,11 +84,7 @@ export const saveProfileStep = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
-
-// Only the fields the homepage proposal card actually renders. Critically this
-// EXCLUDES basicInfo.gallery — gallery photos are stored as base64 blobs, and
-// returning them for every profile made this endpoint 2.8MB / 99 seconds.
+ 
 const PROPOSAL_CARD_FIELDS = [
   "firstName",
   "lastName",
@@ -110,10 +99,7 @@ const PROPOSAL_CARD_FIELDS = [
   "createdAt",
 ].join(" ");
 
-// Strips the heavy base64 avatar out of a proposal document, replacing it with
-// a boolean. Clients load the actual image from GET /api/profile/avatar/:id,
-// which lets the browser fetch avatars in parallel and cache them — instead of
-// inlining ~45KB of base64 per profile into the JSON payload.
+ 
 const stripAvatar = (u) => {
   const { basicInfo = {}, ...rest } = u;
   const { featuredImage, ...basicRest } = basicInfo;
@@ -141,10 +127,7 @@ export const getUserAvatar = async (req, res) => {
       return res.status(404).json({ success: false, message: "No avatar set" });
     }
 
-    // Photos uploaded through the app are base64 data URLs, but some profiles
-    // store a plain image URL instead. Those used to 404 here, which made every
-    // list that relies on this endpoint fall back to a generic stock avatar —
-    // hand the caller on to the real image instead.
+     
     if (/^https?:\/\//i.test(dataUrl)) {
       res.set("Cache-Control", "public, max-age=86400");
       return res.redirect(302, dataUrl);
@@ -162,7 +145,7 @@ export const getUserAvatar = async (req, res) => {
     const buffer = Buffer.from(match[2], "base64");
 
     res.set("Content-Type", match[1]);
-    res.set("Cache-Control", "public, max-age=86400"); // cache for a day
+    res.set("Cache-Control", "public, max-age=86400"); 
     return res.send(buffer);
   } catch (error) {
     console.error("getUserAvatar Error:", error);
@@ -171,21 +154,11 @@ export const getUserAvatar = async (req, res) => {
 };
 
 // @desc    Users an admin has hand-picked for the homepage seekers grid
-// @route   GET /api/profile/serious-seekers
-//
-// Selects PROPOSAL_CARD_FIELDS deliberately: this section renders the exact same
-// card component as Latest Proposals, so the two must return the same shape or
-// one of them silently loses fields.
+// @route   GET /api/profile/serious-seekers 
 export const getSeriousSeekers = async (req, res) => {
   const requestStart = Date.now();
   try {
-    // Deliberately NOT filtered by isProfileComplete: whoever the admin ticks is
-    // exactly who appears, so the admin screen can't silently disagree with the
-    // homepage. The card falls back gracefully on any missing field.
-    // Newest account first, same rule as the proposals lists. This used to sort
-    // on updatedAt, which moves whenever a user edits ANY part of their profile
-    // — so a featured member could jump to the front of the section just for
-    // changing their phone number.
+     
     const users = await User.find({ isSeriousSeeker: true, role: { $ne: "admin" } })
       .select(PROPOSAL_CARD_FIELDS)
       .sort({ createdAt: -1, _id: -1 })
@@ -205,15 +178,11 @@ export const getSeriousSeekers = async (req, res) => {
   }
 };
 
-export const getRecentProposals = async (req, res) => {
-  // TEMPORARY performance diagnostics — remove once the slow-API cause is confirmed
+export const getRecentProposals = async (req, res) => { 
   const requestStart = Date.now();
   try {
-    const { userId } = req.params;
-    // Admins are excluded so staff accounts never appear as proposals
-    let query = { isProfileComplete: true, role: { $ne: "admin" } };
-
-    // 1. Check karein agar userId valid character string ho (undefined/null text na ho)
+    const { userId } = req.params; 
+    let query = { isProfileComplete: true, role: { $ne: "admin" } }; 
     const isValidUserParam =
       userId &&
       userId !== "all" &&
@@ -221,24 +190,11 @@ export const getRecentProposals = async (req, res) => {
       userId !== "null" &&
       mongoose.Types.ObjectId.isValid(userId);
 
-    if (isValidUserParam) {
-      // Logged-in user ka apna profile exclude karein
+    if (isValidUserParam) { 
       query._id = { $ne: new mongoose.Types.ObjectId(userId) };
     }
 
-    // 2. Database query execute karein — every matching profile is returned
-    // (no limit) so the homepage's "Show More" button can page through them
-    // client-side.
-    //
-    // NOTE: this deliberately no longer narrows results to the viewer's
-    // preferred partner country. That filter cut a logged-in user's homepage
-    // from 22 profiles down to 3, which read as an empty/broken section.
-    // Preference-based filtering still lives on the dedicated search page.
-    // Newest account first. _id is the tie-breaker: MongoDB does not guarantee
-    // a stable order for equal sort keys, and bulk-created accounts routinely
-    // share the same createdAt millisecond — without this their order could
-    // shuffle between page loads. An ObjectId embeds its creation time, so
-    // _id: -1 keeps "newest first" within a tie too.
+    
     const users = await User.find(query)
       .select(PROPOSAL_CARD_FIELDS)
       .sort({ createdAt: -1, _id: -1 })
@@ -255,8 +211,7 @@ export const getRecentProposals = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Error in getRecentProposals:", error);
-    // Vercel HTML Error ki bajaye hamesha JSON Return karein
+    console.error("Error in getRecentProposals:", error); 
     return res.status(500).json({
       success: false,
       message: "Server error fetching proposals",
@@ -266,28 +221,20 @@ export const getRecentProposals = async (req, res) => {
 };
 
 
-export const getAllProfiles = async (req, res) => {
-  // TEMPORARY performance diagnostics — remove once the slow-API cause is confirmed
+export const getAllProfiles = async (req, res) => { 
   const requestStart = Date.now();
-  try {
-    // 1. Database level query: Admins filter out honge aur Passwords/OTPs hide honge.
-    // basicInfo.gallery is excluded too — Search.jsx (the only consumer of this
-    // endpoint) never reads it, and gallery photos can be large base64 blobs
-    // that were bloating this response for every single user in the list.
+  try { 
     const queryStart = Date.now();
     const users = await User.find(
       { role: { $ne: "admin" } },
       "-password -otp -otpExpires -basicInfo.gallery"
     )
-      // Newest account first, matching the homepage proposals list. Without a
-      // sort this returned raw insertion order, which put the newest profile
-      // LAST on the search page. _id breaks ties deterministically, since
-      // bulk-created accounts can share a createdAt millisecond.
+       
       .sort({ createdAt: -1, _id: -1 })
       .lean();
     console.error(`[TIMING] getAllProfiles - query (${users.length} users): ${Date.now() - queryStart}ms`);
 
-    // 2. Clean Frontend Data Mapping
+     
     const profiles = users.map((u) => {
       const basic = u.basicInfo || {};
       const religious = u.religiousInfo || {};

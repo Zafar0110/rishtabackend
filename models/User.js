@@ -15,9 +15,7 @@ const userSchema = new mongoose.Schema(
     connects: { type: Number, default: 5 },
     currentPackage: { type: String, default: "Free" },
 
-    // Hand-picked by an admin to appear in the "Serious Marriage Seekers"
-    // section on the public homepage. Nothing else reads this flag, and it is
-    // never set by the user themselves.
+     
     isSeriousSeeker: { type: Boolean, default: false },
 
     // Email Verification Status
@@ -25,11 +23,11 @@ const userSchema = new mongoose.Schema(
     otp: { type: String },
     otpExpires: { type: Date },
 
-    // 🚀 Profile Progress Tracking
+    //   Profile Progress Tracking
     isProfileComplete: { type: Boolean, default: false },
     completedStep: { type: Number, default: 1 },
 
-    // 📄 7-Step Profile Data Objects
+    //   7-Step Profile Data Objects
     basicInfo: {
       featuredImage: { type: String, default: "" },
       gallery: [{ type: String }],

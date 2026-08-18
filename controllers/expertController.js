@@ -1,8 +1,7 @@
 import mongoose from "mongoose";
 import RishtaExpert from "../models/RishtaExpert.js";
 
-// Base64 data URL cap. Images are compressed client-side to ~150KB, so anything
-// approaching this is either uncompressed or not really an image.
+ 
 const MAX_IMAGE_DATA_URL_LENGTH = 3 * 1024 * 1024;
 
 // @desc    Public: submit a "Register Now" application from the match-makers page
@@ -31,8 +30,7 @@ export const registerExpert = async (req, res) => {
       });
     }
 
-    // The client compresses to a base64 data URL before sending; reject anything
-    // that isn't one so a stray string can't be stored as an "image".
+     
     if (!/^data:image\/[a-z0-9.+-]+;base64,/i.test(cleanImage)) {
       return res.status(400).json({
         success: false,
@@ -40,8 +38,7 @@ export const registerExpert = async (req, res) => {
       });
     }
 
-    // Same shape of check the rest of the app relies on the client for — repeated
-    // here because this endpoint is public and reachable without the form.
+     
     if (!/^\S+@\S+\.\S+$/.test(cleanEmail)) {
       return res.status(400).json({ success: false, message: "Please provide a valid email address" });
     }
@@ -63,7 +60,7 @@ export const registerExpert = async (req, res) => {
     return res.status(201).json({
       success: true,
       message: "Thank you! Your registration has been submitted.",
-      // Deliberately not echoing the image back — the client already has it
+       
       expert: {
         _id: expert._id,
         fullName: expert.fullName,
@@ -83,11 +80,7 @@ export const registerExpert = async (req, res) => {
 };
 
 // @desc    Admin: list every submitted expert application
-// @route   GET /api/expert/all   (protectAdmin)
-//
-// profileImage is excluded here for the same reason the proposal lists exclude
-// avatars — a base64 image per row would make this response huge. The table
-// shows a photo via GET /api/expert/photo/:id instead, which the browser caches.
+// @route   GET /api/expert/all   
 export const getAllExperts = async (req, res) => {
   try {
     const experts = await RishtaExpert.find()
@@ -120,10 +113,7 @@ export const getAllExperts = async (req, res) => {
 
 // @desc    Public: the activated experts shown in "Professional Experts"
 // @route   GET /api/expert/active
-//
-// Email is deliberately never returned here — only what the public card renders.
-// The phone is included because the card's WhatsApp button needs it, which is
-// the whole point of listing an expert publicly.
+ 
 export const getActiveExperts = async (req, res) => {
   try {
     const experts = await RishtaExpert.find({ isActive: true })
@@ -143,7 +133,7 @@ export const getActiveExperts = async (req, res) => {
 };
 
 // @desc    Admin: activate / deactivate an expert
-// @route   PUT /api/expert/:id/status   (protectAdmin)
+// @route   PUT /api/expert/:id/status   
 export const toggleExpertStatus = async (req, res) => {
   try {
     const { id } = req.params;
@@ -198,10 +188,7 @@ export const deleteExpert = async (req, res) => {
 };
 
 // @desc    Admin: how many registrations the admin hasn't looked at yet
-// @route   GET /api/expert/unseen-count   (protectAdmin)
-//
-// Deliberately tiny — the admin header calls this on every admin page so the
-// Expert tab can show its red badge without pulling the whole list.
+// @route   GET /api/expert/unseen-count   (protectAdmin) 
 export const getUnseenExpertCount = async (req, res) => {
   try {
     const count = await RishtaExpert.countDocuments({ isSeen: { $ne: true } });
@@ -228,10 +215,7 @@ export const markExpertsSeen = async (req, res) => {
 };
 
 // @desc    Serve one applicant's photo as a real, cacheable image
-// @route   GET /api/expert/photo/:id
-//
-// Not admin-protected — see the note in expertRoutes.js. Returns only the image,
-// never the applicant's contact details.
+// @route   GET /api/expert/photo/:id 
 export const getExpertPhoto = async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {

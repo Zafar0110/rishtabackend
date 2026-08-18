@@ -12,15 +12,12 @@ import profileRoutes from "./routes/profileRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 import chatRoutes from "./routes/chatRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
-import expertRoutes from "./routes/expertRoutes.js";
-// ðŸŸ¢ Save cPanel's assigned PORT before dotenv runs
+import expertRoutes from "./routes/expertRoutes.js"; 
 const PASSENGER_PORT = process.env.PORT;
 
 dotenv.config();
 
-const app = express();
-// Trim any trailing slash — a mismatched trailing slash would silently fail
-// the browser's Origin header comparison and break CORS for that domain.
+const app = express(); 
 const ALLOWED_ORIGIN = (process.env.FRONTEND_URL || "https://rishtapoin-front.vercel.app").replace(/\/$/, "");
 
 app.use(compression());
@@ -36,8 +33,7 @@ app.use(
   })
 );
 
-app.use(async (req, res, next) => {
-  // TEMPORARY performance diagnostics — remove once the slow-API cause is confirmed
+app.use(async (req, res, next) => { 
   const dbStart = Date.now();
   try {
     await connectDB();
@@ -59,8 +55,8 @@ app.use(async (req, res, next) => {
 const server = http.createServer(app);
 
 const io = new Server(server, {
-  maxHttpBufferSize: 1e8, // 100 MB payload limit for large messages/attachments
-  pingTimeout: 60000, // more tolerant of slow responses on this hosting environment
+  maxHttpBufferSize: 1e8,  
+  pingTimeout: 60000,  
   pingInterval: 25000,
   cors: {
     origin: [ALLOWED_ORIGIN, "http://localhost:5173", "http://localhost:3000"],
@@ -115,8 +111,7 @@ app.get("/", (req, res) => {
 });
 
 
-app.use("/api/admin", adminRoutes);
-// ðŸŸ¢ Use Passenger's PORT if available, otherwise fallback to process.env.PORT or 5000
+app.use("/api/admin", adminRoutes); 
 const PORT = PASSENGER_PORT || process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`ðŸš€ Server running on port ${PORT}`);

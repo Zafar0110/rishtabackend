@@ -14,12 +14,12 @@ const cleanId = (val) => {
 // @desc    Initiate Chat or Get Existing Conversation & Deduct Connect if New
 // @route   POST /api/chat/start
 export const startOrGetConversation = async (req, res) => {
-  // TEMPORARY performance diagnostics — remove once the slow-API cause is confirmed
+  // TEMPORARY performance diagnostics 
   const requestStart = Date.now();
   try {
     const { senderId, receiverId } = req.body;
 
-    // 1. Validate IDs presence
+    
     if (!senderId || !receiverId) {
       return res.status(400).json({
         success: false,
@@ -27,7 +27,7 @@ export const startOrGetConversation = async (req, res) => {
       });
     }
 
-    // 2. Validate MongoDB ObjectId Format
+     
     if (!mongoose.Types.ObjectId.isValid(senderId) || !mongoose.Types.ObjectId.isValid(receiverId)) {
       return res.status(400).json({
         success: false,
@@ -35,7 +35,7 @@ export const startOrGetConversation = async (req, res) => {
       });
     }
 
-    // 3. Prevent Self Chat
+     
     if (senderId.toString() === receiverId.toString()) {
       return res.status(400).json({
         success: false,
@@ -43,7 +43,7 @@ export const startOrGetConversation = async (req, res) => {
       });
     }
 
-    // 4. Check if conversation already exists
+    
     const existingCheckStart = Date.now();
     let conversation = await Conversation.findOne({
       participants: { $all: [senderId, receiverId], $size: 2 },
@@ -60,8 +60,7 @@ export const startOrGetConversation = async (req, res) => {
       });
     }
 
-    // 5. New Chat - Verify Sender & Connects. Fetch both users concurrently
-    // instead of sequentially — they don't depend on each other.
+     
     const usersStart = Date.now();
     const [sender, receiver] = await Promise.all([
       User.findById(senderId),
@@ -78,9 +77,7 @@ export const startOrGetConversation = async (req, res) => {
 
     const userConnects = sender.connects !== undefined ? sender.connects : 5;
 
-    // Still refused up front with 0 connects — otherwise the user would be sent
-    // into a chat window they can't actually send anything from. This is only a
-    // check now, NOT a charge.
+     
     if (userConnects <= 0) {
       return res.status(403).json({
         success: false,
@@ -89,9 +86,7 @@ export const startOrGetConversation = async (req, res) => {
       });
     }
 
-    // 6. Create the conversation. No connect is deducted here — the charge
-    // happens in sendMessage, when the initiator actually sends their first
-    // message, so abandoning a chat window costs the user nothing.
+    
     const writeStart = Date.now();
     const newConversation = await Conversation.create({
       participants: [senderId, receiverId],
@@ -100,8 +95,7 @@ export const startOrGetConversation = async (req, res) => {
     });
     console.error(`[TIMING] startChat - conversation create: ${Date.now() - writeStart}ms`);
 
-    // Build the populated shape from data already in memory (sender/receiver
-    // docs fetched above) instead of an extra findById().populate() round-trip.
+    
     const pickParticipant = (u) => ({
       _id: u._id,
       firstName: u.firstName,
@@ -134,13 +128,11 @@ export const startOrGetConversation = async (req, res) => {
 
 // @desc    Send Message & Real-time Socket Broadcast from Backend
 // @route   POST /api/chat/send-message
-// controllers/chatController.js ko replace karein sendMessage function ko
-
-// Base64 data URL length cap (~8MB raw file, keeps the document safely under MongoDB's 16MB limit)
+ 
 const MAX_FILE_DATA_URL_LENGTH = 12 * 1024 * 1024;
 
 export const sendMessage = async (req, res) => {
-  // TEMPORARY performance diagnostics — remove once the slow-API cause is confirmed
+  
   const requestStart = Date.now();
   try {
     const { conversationId, senderId, receiverId, text, fileUrl, fileName, fileType, fileSize, fileDuration } = req.body;
@@ -162,13 +154,7 @@ export const sendMessage = async (req, res) => {
 
     console.error(`[TIMING] sendMessage - payload size: ${JSON.stringify(req.body).length} bytes`);
 
-    // 0. Charge the connect, if this is the initiator's first message here.
-    //
-    // The claim is made with a single conditional update so two rapid sends
-    // can't both win it — whichever request flips connectCharged first is the
-    // only one that goes on to deduct. A conversation whose initiator is null
-    // (i.e. created before connects moved to send-time) can never match, so
-    // older chats are never charged twice.
+     
     let connectCharged = false;
     let remainingConnects;
 
@@ -179,23 +165,13 @@ export const sendMessage = async (req, res) => {
     );
 
     if (claimed) {
-      // Releases the claim so the charge can still be taken on a later attempt.
-      // Without this an out-of-connects (or failed) send would leave the
-      // conversation marked as paid and the user would chat for free.
+      
       const releaseClaim = () =>
         Conversation.updateOne({ _id: conversationId }, { $set: { connectCharged: false } });
 
       let deducted;
       try {
-        // Guarded so a user who opened several chats before sending anything
-        // can't push their balance negative.
-        //
-        // Older accounts can be missing the connects field entirely (the schema
-        // default only applies to documents created through Mongoose), and those
-        // are treated as having the default 5 — the same rule that
-        // startOrGetConversation has always used. This is a pipeline update
-        // rather than $inc because $inc on a missing field would set it to -1
-        // instead of 4.
+         
         deducted = await User.findOneAndUpdate(
           {
             _id: senderId,
@@ -209,8 +185,7 @@ export const sendMessage = async (req, res) => {
         throw chargeError;
       }
 
-      if (!deducted) {
-        // Out of connects — release the claim and reject before storing anything
+      if (!deducted) { 
         await releaseClaim();
         return res.status(403).json({
           success: false,
@@ -224,13 +199,7 @@ export const sendMessage = async (req, res) => {
       console.error(`[TIMING] sendMessage - connect charge: ${Date.now() - chargeStart}ms`);
     }
 
-    // 1. Create Message in Database — the only DB round-trip on the response's
-    // critical path. sender/receiver/conversationId are stored exactly as sent
-    // (plain ObjectIds, which serialize to hex strings over JSON/socket) — no
-    // re-fetch/populate needed, since the frontend only ever reads the raw
-    // sender ID for left/right bubble alignment, never a populated name/avatar
-    // on a per-message basis. Each populate() here used to cost a full extra
-    // network round-trip to the database.
+    
     const createStart = Date.now();
     const newMessage = await Message.create({
       conversationId,
@@ -245,16 +214,13 @@ export const sendMessage = async (req, res) => {
     });
     console.error(`[TIMING] sendMessage - Message.create: ${Date.now() - createStart}ms`);
 
-    // 2. Update the conversation's lastMessage in the background — intentionally
-    // not awaited, since it's not needed for the sender's own response (they
-    // already have the message) and shouldn't add another round-trip of latency
-    // to every send.
+    
     Conversation.findByIdAndUpdate(conversationId, {
       lastMessage: newMessage._id,
       updatedAt: new Date(),
     }).catch((err) => console.error("Background lastMessage update failed:", err));
 
-    // 3. Real-time socket broadcast (best-effort, never blocks the response)
+    
     try {
       const io = req.app.get("io");
       if (io) {
@@ -275,9 +241,7 @@ export const sendMessage = async (req, res) => {
       // Backend api success response block nahi hona chahye.
     }
 
-    // 4. Respond immediately — frontend handles this optimistically.
-    // connectCharged tells the client to refresh its connects display; it's only
-    // true on the one message that actually cost a connect.
+     
     console.error(`[TIMING] sendMessage - TOTAL handler time: ${Date.now() - requestStart}ms`);
     return res.status(200).json({
       success: true,
@@ -295,7 +259,7 @@ export const sendMessage = async (req, res) => {
 // @desc    Get All Messages for a Conversation
 // @route   GET /api/chat/messages/:conversationId
 export const getMessages = async (req, res) => {
-  // TEMPORARY performance diagnostics — remove once the slow-API cause is confirmed
+  
   const requestStart = Date.now();
   try {
     const { conversationId } = req.params;
@@ -304,22 +268,13 @@ export const getMessages = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid Conversation ID" });
     }
 
-    // No populate — the frontend only reads the raw sender ID per-message
-    // (for left/right alignment), never a populated name/avatar. .lean()
-    // skips document hydration since these are read-only.
-    //
-    // fileUrl (the base64 attachment blob) is deliberately EXCLUDED here: a
-    // thread of only 7-21 messages was measured at 1.3-1.9s on production
-    // purely because every attachment's full binary was dragged along. The
-    // remaining file metadata (name/type/size/duration) is enough to render
-    // the bubble immediately; the blob itself is fetched on demand per
-    // attachment via GET /api/chat/attachment/:messageId.
+     
     const messages = await Message.find({ conversationId })
       .select("-fileUrl")
       .sort({ createdAt: 1 })
       .lean();
 
-    // Flag which messages have an attachment to lazy-load, without shipping it.
+    
     const withFlags = messages.map((m) => ({
       ...m,
       hasAttachment: !!m.fileName || !!m.fileType,
@@ -361,7 +316,7 @@ export const getMessageAttachment = async (req, res) => {
 // @desc    Get all conversations for a specific user
 // @route   GET /api/chat/conversations/:userId
 export const getUserConversations = async (req, res) => {
-  // TEMPORARY performance diagnostics — remove once the slow-API cause is confirmed
+  
   const requestStart = Date.now();
   try {
     const { userId } = req.params;
@@ -370,15 +325,7 @@ export const getUserConversations = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid User ID" });
     }
 
-    // Single aggregation instead of find()+populate()+populate(). Each separate
-    // query is a full network round-trip to Atlas (~267ms measured), so any
-    // multi-stage approach costs a multiple of that. $lookup makes MongoDB do
-    // both joins server-side, returning everything in ONE round-trip.
-    //
-    // Both lookups are field-limited so no base64 blobs ride along:
-    //  - participants: only the avatar/name fields the inbox actually renders,
-    //    NOT the whole basicInfo object with its gallery array.
-    //  - lastMessage: only what the preview line shows — excludes fileUrl.
+    
     const conversations = await Conversation.aggregate([
       { $match: { participants: new mongoose.Types.ObjectId(userId) } },
       { $sort: { updatedAt: -1 } },
@@ -412,7 +359,7 @@ export const getUserConversations = async (req, res) => {
           ],
         },
       },
-      // $lookup always returns an array; flatten lastMessage back to an object
+      
       { $addFields: { lastMessage: { $arrayElemAt: ["$lastMessage", 0] } } },
     ]);
 

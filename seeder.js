@@ -166,7 +166,7 @@ const seedData = async () => {
     const dummy20Users = await generate20Users();
     const createdUsers = await User.insertMany(dummy20Users);
 
-    console.log(`\n✅ SUCCESS: 20 Unique Profiles Successfully Inserted!`);
+    console.log(`  SUCCESS: 20 Unique Profiles Successfully Inserted!`);
     console.log("=========================================================");
     createdUsers.forEach((u, idx) => {
       console.log(`${idx + 1}. ${u.firstName} ${u.lastName} (${u.basicInfo.gender}) | Residence: ${u.locationInfo.residenceCountry} - ${u.locationInfo.residenceCity} | ID: ${u._id}`);
@@ -175,7 +175,7 @@ const seedData = async () => {
 
     process.exit();
   } catch (error) {
-    console.error(`❌ Seeding Error: ${error.message}`);
+    console.error(`  Seeding Error: ${error.message}`);
     process.exit(1);
   }
 };

@@ -20,14 +20,11 @@ const messageSchema = new mongoose.Schema(
     text: {
       type: String,
       default: "",
-    },
-    // Single file attachment (stored as a base64 data URL, matching the
-    // pattern already used for profile photos in this app)
+    }, 
     fileUrl: { type: String, default: "" },
     fileName: { type: String, default: "" },
     fileType: { type: String, default: "" },
-    fileSize: { type: Number, default: 0 },
-    // Recorded duration in seconds — only meaningful for audio/* attachments (voice notes)
+    fileSize: { type: Number, default: 0 }, 
     fileDuration: { type: Number, default: 0 },
     isRead: {
       type: Boolean,

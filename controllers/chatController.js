@@ -3,7 +3,7 @@ import Conversation from "../models/Conversation.js";
 import Message from "../models/Message.js";
 import User from "../models/User.js";
 
-// Helper function to force clean String IDs
+ 
 const cleanId = (val) => {
   if (!val) return "";
   if (typeof val === "string") return val.trim();
@@ -14,7 +14,7 @@ const cleanId = (val) => {
 // @desc    Initiate Chat or Get Existing Conversation & Deduct Connect if New
 // @route   POST /api/chat/start
 export const startOrGetConversation = async (req, res) => {
-  // TEMPORARY performance diagnostics 
+   
   const requestStart = Date.now();
   try {
     const { senderId, receiverId } = req.body;
@@ -238,7 +238,7 @@ export const sendMessage = async (req, res) => {
       }
     } catch (socketError) {
       console.error("Non-critical Socket Broadcast Error:", socketError);
-      // Backend api success response block nahi hona chahye.
+      
     }
 
      
@@ -378,20 +378,35 @@ export const getUnreadMessages = async (req, res) => {
 
     if (!userId) {
       return res.status(400).json({ success: false, message: "User ID is required" });
-    }
-
+    } 
     const unreadMessages = await Message.find({
       receiver: userId,
       isRead: false,
     })
-      .populate("sender", "firstName lastName profileImage basicInfo")
-      .populate("conversationId")
-      .sort({ createdAt: -1 });
+      .select("text fileName fileType createdAt sender conversationId")
+      .populate("sender", "firstName lastName basicInfo.featuredImage basicInfo.gender")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const payload = unreadMessages.map((m) => {
+      const s = m.sender || {};
+      const featured = s.basicInfo?.featuredImage;
+      return {
+        ...m,
+        sender: {
+          _id: s._id,
+          firstName: s.firstName || "",
+          lastName: s.lastName || "",
+          gender: s.basicInfo?.gender || "",
+          hasAvatar: !!(featured && String(featured).trim() !== ""),
+        },
+      };
+    });
 
     res.status(200).json({
       success: true,
-      count: unreadMessages.length,
-      unreadMessages,
+      count: payload.length,
+      unreadMessages: payload,
     });
   } catch (error) {
     console.error("Get Unread Messages Error:", error);

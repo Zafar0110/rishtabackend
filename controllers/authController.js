@@ -1,11 +1,11 @@
 import User from "../models/User.js";
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken"; // JWT Import Added
+import jwt from "jsonwebtoken";  
 import sendEmail from "../config/sendEmail.js";
 
 const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
 
-// 🔑 Helper Function to Generate JWT Token
+//   Helper Function to Generate JWT Token
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET || "rishtapoint_secret_key", {
     expiresIn: "7d",
@@ -19,22 +19,37 @@ export const registerUser = async (req, res) => {
     const { firstName, lastName, email, phone, password, registerType, relation } = req.body;
 
     const normalizedEmail = email.trim().toLowerCase();
+    const normalizedPhone = (phone || "").trim();
 
     let user = await User.findOne({ email: normalizedEmail });
 
     if (user && user.isVerified) {
-      return res.status(400).json({ message: "User already registered and verified with this email" });
+      return res.status(400).json({
+        message: "This email is already registered. Please log in instead, or use a different email address.",
+      });
+    }
+
+    
+    const phoneTaken = await User.findOne({
+      phone: normalizedPhone,
+      email: { $ne: normalizedEmail },
+    }).select("_id");
+
+    if (phoneTaken) {
+      return res.status(400).json({
+        message: "This phone number is already registered with another account. Please use a different number.",
+      });
     }
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
     const otp = generateOTP();
-    const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 mins validity
+    const otpExpires = new Date(Date.now() + 10 * 60 * 1000);  
 
     if (user && !user.isVerified) {
       user.firstName = firstName;
       user.lastName = lastName;
-      user.phone = phone;
+      user.phone = normalizedPhone;
       user.password = hashedPassword;
       user.registerType = registerType;
       user.relation = relation;
@@ -46,7 +61,7 @@ export const registerUser = async (req, res) => {
         firstName,
         lastName,
         email: normalizedEmail,
-        phone,
+        phone: normalizedPhone,
         password: hashedPassword,
         registerType,
         relation,
@@ -251,7 +266,7 @@ export const loginUser = async (req, res) => {
 
     console.error(`[TIMING] Login - TOTAL handler time: ${Date.now() - requestStart}ms`);
 
-    // ✅ Clean Response with Role included
+    //   Clean Response with Role included
     res.status(200).json({
       success: true,
       token,
